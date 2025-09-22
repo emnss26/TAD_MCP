@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "revit-wall": {
+      "command": "npx",
+      "args": ["tsx", "C:/ruta/a/tu/repo/mcp/server/src/index.ts"]
+    }
+  }
+}

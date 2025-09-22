@@ -13,12 +13,14 @@ const CreateWallSchema = z.object({
   structural: z.boolean().default(false)
 });
 
+type CreateWallInput = z.infer<typeof CreateWallSchema>;
+
 const server = new Server({ name: "revit-mcp", version: "0.1.0" });
 
 server.tool("create_wall", {
   description: "Create a straight wall in Revit.",
   inputSchema: CreateWallSchema,
-  handler: async (input) => {
+  handler: async (input: CreateWallInput) => {
     const payload = { action: "wall.create", args: input };
     const { body, statusCode } = await request(BRIDGE_URL, {
       method: "POST",

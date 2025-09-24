@@ -54,6 +54,7 @@
   <ItemGroup>
     <Compile Include="Actions\ArchitectureActions.cs" />
     <Compile Include="Actions\GraphicsActions.cs" />
+    <Compile Include="Actions\QueryActions.cs" />
     <Compile Include="App.cs" />
     <Compile Include="Contracts\Envelope.cs" />
     <Compile Include="Contracts\WallsDtos.cs" />

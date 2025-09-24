@@ -65,13 +65,18 @@ namespace mcp_app
 
             _registry = new Dictionary<string, Func<JObject, Func<UIApplication, object>>>(StringComparer.OrdinalIgnoreCase)
             {
-                // Walls / Arquitectura
+                // Walls / Architecture
                 ["wall.create"] = ArchitectureActions.WallCreate,
 
                 // Graphics
                 ["view.category.set_visibility"] = GraphicsActions.SetVisibility,
                 ["view.category.override_color"] = GraphicsActions.OverrideColor,
                 ["view.category.clear_overrides"] = GraphicsActions.ClearOverrides,
+
+                // Consultas
+                ["levels.list"] = QueryActions.LevelsList,
+                ["walltypes.list"] = QueryActions.WallTypesList,
+                ["view.active"] = QueryActions.ActiveViewInfo,
             };
         }
 

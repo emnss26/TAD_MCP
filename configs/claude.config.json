@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "revit-core": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp-core/dist/index.js"]
+    },
+    "revit-graphics": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp-graphics/dist/index.js"]
+    },
+    "revit-qa": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp-qa/dist/index.js"]
+    },
+    "revit-export": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp-export/dist/index.js"]
+    }
+  }
+}

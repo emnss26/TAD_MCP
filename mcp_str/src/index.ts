@@ -2,7 +2,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_query";   // cámbialo por MCP
+const SERVER_NAME = process.env.MCP_NAME ?? "mcp_str";   // cámbialo por MCP
 const SERVER_VERSION = "0.1.0";
 const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
 
@@ -44,20 +44,9 @@ function registerTools(names: string[]) {
 // ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
 const TOOLS: string[] = [
   // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "levels.list",
-  "walltypes.list",
-  "views.list",
-  "schedules.list",
-  "materials.list",
-  "categories.list",
-  "families.types.list",
-  "links.list",
-  "imports.list",
-  "worksets.list",
-  "textnotes.find",
-  "ducttypes.list",
-  "pipetypes.list",
-  "cabletraytypes.list",
+  "struct.beam.create",
+  "struct.column.create",
+  "struct.floor.create",
 ];
 
 registerTools(TOOLS);

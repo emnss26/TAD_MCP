@@ -65,18 +65,70 @@ namespace mcp_app
 
             _registry = new Dictionary<string, Func<JObject, Func<UIApplication, object>>>(StringComparer.OrdinalIgnoreCase)
             {
-                // Walls / Architecture
+                // --- CORE / ARCH ---
                 ["wall.create"] = ArchitectureActions.WallCreate,
+                ["level.create"] = ArchitectureActions.LevelCreate,
+                ["grid.create"] = ArchitectureActions.GridCreate,
+                ["floor.create"] = ArchitectureActions.FloorCreate,
+                ["ceiling.create"] = ArchitectureActions.CeilingCreate, 
+                ["door.place"] = ArchitectureActions.DoorPlace,
+                ["window.place"] = ArchitectureActions.WindowPlace,
 
-                // Graphics
+                // --- Estructura ---
+                ["struct.beam.create"] = StructureActions.BeamCreate,
+                ["struct.column.create"] = StructureActions.ColumnCreate,
+                ["struct.floor.create"] = StructureActions.StructuralFloorCreate,
+                ["ducttypes.list"] = QueryActions.DuctTypesList,
+                ["pipetypes.list"] = QueryActions.PipeTypesList,
+                ["cabletraytypes.list"] = QueryActions.CableTrayTypesList,
+
+                // --- MEP ---
+                ["mep.duct.create"] = MepDuctActions.DuctCreate,
+                ["mep.pipe.create"] = MepPipeConduitActions.PipeCreate,
+                ["mep.conduit.create"] = MepPipeConduitActions.ConduitCreate,
+                ["mep.cabletray.create"] = MepPipeConduitActions.CableTrayCreate,
+
+                // --- GRAPHICS ---
+
                 ["view.category.set_visibility"] = GraphicsActions.SetVisibility,
                 ["view.category.override_color"] = GraphicsActions.OverrideColor,
                 ["view.category.clear_overrides"] = GraphicsActions.ClearOverrides,
+                ["view.apply_template"] = GraphicsActions.ApplyTemplate,
+                ["view.set_scale"] = GraphicsActions.SetScale,
+                ["view.set_detail_level"] = GraphicsActions.SetDetailLevel,
+                ["view.set_discipline"] = GraphicsActions.SetDiscipline,
+                ["view.set_phase"] = GraphicsActions.SetPhase,
+                ["views.duplicate"] = GraphicsActions.ViewsDuplicate,
+                ["sheets.create"] = GraphicsActions.SheetsCreate,
+                ["sheets.add_views"] = GraphicsActions.SheetsAddViews,
+                ["imports.hide"] = GraphicsActions.HideImports,
 
-                // Consultas
+                // --- QUERY ---
                 ["levels.list"] = QueryActions.LevelsList,
                 ["walltypes.list"] = QueryActions.WallTypesList,
+                ["views.list"] = QueryActions.ViewsList,
+                ["schedules.list"] = QueryActions.SchedulesList,
+                ["materials.list"] = QueryActions.MaterialsList,
+                ["categories.list"] = QueryActions.CategoriesList,
+                ["families.types.list"] = QueryActions.FamiliesTypesList,
+                ["links.list"] = QueryActions.LinksList,
+                ["imports.list"] = QueryActions.ImportsList,
+                ["worksets.list"] = QueryActions.WorksetsList,
+                ["textnotes.find"] = QueryActions.TextNotesFind,
                 ["view.active"] = QueryActions.ActiveViewInfo,
+
+                // --- EXPORT ---
+                ["export.nwc"] = ExportActions.ExportNwc,
+                ["export.dwg"] = ExportActions.ExportDwg,
+                ["export.pdf"] = ExportActions.ExportPdf,
+
+                // --- QA ---
+                ["qa.fix.pin_all_links"] = QaActions.FixPinAllLinks,
+                ["qa.fix.delete_imports"] = QaActions.FixDeleteImports,
+                ["qa.fix.apply_view_templates"] = QaActions.FixApplyViewTemplates,
+                ["qa.fix.remove_textnotes"] = QaActions.FixRemoveTextNotes,
+                ["qa.fix.delete_unused_types"] = QaActions.FixDeleteUnusedTypes,
+                ["qa.fix.rename_views"] = QaActions.FixRenameViews,
             };
         }
 

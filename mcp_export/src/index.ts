@@ -1,65 +1,100 @@
-// src/index.ts
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { postRevit } from "./bridge.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_export";   // cámbialo por MCP
-const SERVER_VERSION = "0.1.0";
-const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
+// Server MCP
+const server = new McpServer({
+  name: "mcp-export",
+  version: "1.0.0",
+});
 
-// Helper para llamar al Bridge (C#)
-async function callRevit(action: string, args: any) {
-  const res = await fetch(REVIT_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, args }),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) {
-    const msg = payload?.message || `HTTP ${res.status}`;
-    throw new Error(`RevitBridge error on '${action}': ${msg}`);
+// Helper: devuelve JSON pretty como texto
+const asText = (obj: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+});
+
+/* ======================
+   export.nwc
+   ====================== */
+const ExportNwcShape = {
+  folder: z.string().optional(),
+  filename: z.string().optional(),
+  convertElementProperties: z.boolean().optional(),
+
+  // Selección de vistas (todas opcionales; el bridge hace fallbacks)
+  viewId: z.number().int().optional(),
+  viewIds: z.array(z.number().int()).optional(),
+  viewName: z.string().optional(),
+  viewNames: z.array(z.string()).optional(),
+};
+const ExportNwcSchema = z.object(ExportNwcShape);
+
+server.registerTool(
+  "export.nwc",
+  {
+    title: "Export NWC",
+    description:
+      "Exporta a Navisworks (.nwc). Acepta 1 o varias vistas por id/nombre. Si hay varias y no das filename, usa el nombre de la vista.",
+    inputSchema: ExportNwcShape,
+  },
+  async (args: z.infer<typeof ExportNwcSchema>) => {
+    const result = await postRevit("export.nwc", args);
+    return asText(result);
   }
-  return payload.data;
-}
-
-const server = new Server(
-  { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
 );
 
-// Registrador rápido de tools con schema abierto (proxy 1:1 al action del Bridge)
-function registerTools(names: string[]) {
-  for (const name of names) {
-    server.tool(
-      {
-        name,
-        description: `Proxy of RevitBridge action '${name}'.`,
-        // dejamos schema abierto para no encorsetar; tu validación vive en C#
-        inputSchema: { type: "object", additionalProperties: true },
-      },
-      async (args) => callRevit(name, args)
-    );
-  }
-}
+/* ======================
+   export.dwg
+   ====================== */
+const ExportDwgShape = {
+  folder: z.string().optional(),
+  filename: z.string().optional(),
+  exportSetupName: z.string().optional(), // si tienes un setup guardado en Revit
+  viewIds: z.array(z.number().int()).optional(), // si omites, usa la vista activa
+};
+const ExportDwgSchema = z.object(ExportDwgShape);
 
-// ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
-const TOOLS: string[] = [
-  // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "export.nwc",
+server.registerTool(
   "export.dwg",
-  "export.pdf",
-];
-
-registerTools(TOOLS);
-
-async function main() {
-  await server.connect(new StdioServerTransport());
-  // opcional: log no bloqueante para confirmar arranque en local
-  if (process.env.DEBUG?.toLowerCase() === "true") {
-    console.error(`[${SERVER_NAME}] ready. Bridge -> ${REVIT_ENDPOINT}`);
+  {
+    title: "Export DWG",
+    description:
+      "Exporta vistas/laminas a DWG. Si no pasas viewIds, usa la vista activa.",
+    inputSchema: ExportDwgShape,
+  },
+  async (args: z.infer<typeof ExportDwgSchema>) => {
+    const result = await postRevit("export.dwg", args);
+    return asText(result);
   }
-}
+);
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/* ======================
+   export.pdf
+   ====================== */
+const ExportPdfShape = {
+  folder: z.string().optional(),
+  filename: z.string().optional(), // sin extensión; el bridge añade .pdf
+  combine: z.boolean().optional(), // Revit 2022+: combinar en un único PDF
+  viewOrSheetIds: z.array(z.number().int()).optional(), // si omites, usa la vista activa
+};
+const ExportPdfSchema = z.object(ExportPdfShape);
+
+server.registerTool(
+  "export.pdf",
+  {
+    title: "Export PDF",
+    description:
+      "Exporta a PDF (Revit 2022+). Si no pasas viewOrSheetIds, usa la vista activa.",
+    inputSchema: ExportPdfShape,
+  },
+  async (args: z.infer<typeof ExportPdfSchema>) => {
+    const result = await postRevit("export.pdf", args);
+    return asText(result);
+  }
+);
+
+// stdio
+const transport = new StdioServerTransport();
+await server.connect(transport);

@@ -1,69 +1,170 @@
-// src/index.ts
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { postRevit } from "./bridge.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_arch";   // cámbialo por MCP
-const SERVER_VERSION = "0.1.0";
-const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
+// Crea el servidor MCP
+const server = new McpServer({
+  name: "mcp-arch",
+  version: "1.0.0",
+});
 
-// Helper para llamar al Bridge (C#)
-async function callRevit(action: string, args: any) {
-  const res = await fetch(REVIT_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, args }),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) {
-    const msg = payload?.message || `HTTP ${res.status}`;
-    throw new Error(`RevitBridge error on '${action}': ${msg}`);
+// Helper: empaqueta cualquier objeto como texto (JSON pretty)
+const asText = (obj: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+});
+
+// --- wall.create ---
+const WallCreateShape = {
+  level: z.string().optional(),
+  wallType: z.string().optional(),
+  start: z.object({ x: z.number(), y: z.number() }),
+  end: z.object({ x: z.number(), y: z.number() }),
+  height_m: z.number().optional(),
+  structural: z.boolean().optional(),
+};
+const WallCreateSchema = z.object(WallCreateShape);
+
+server.registerTool(
+  "wall.create",
+  {
+    title: "Create Wall",
+    description: "Crea un muro recto con tipo/nivel opcional",
+    inputSchema: WallCreateShape,
+  },
+  async (args: z.infer<typeof WallCreateSchema>) => {
+    const result = await postRevit("wall.create", args);
+    return asText(result);
   }
-  return payload.data;
-}
-
-const server = new Server(
-  { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
 );
 
-// Registrador rápido de tools con schema abierto (proxy 1:1 al action del Bridge)
-function registerTools(names: string[]) {
-  for (const name of names) {
-    server.tool(
-      {
-        name,
-        description: `Proxy of RevitBridge action '${name}'.`,
-        // dejamos schema abierto para no encorsetar; tu validación vive en C#
-        inputSchema: { type: "object", additionalProperties: true },
-      },
-      async (args) => callRevit(name, args)
-    );
-  }
-}
+// --- level.create ---
+const LevelCreateShape = {
+  elevation_m: z.number(),
+  name: z.string().optional(),
+};
+const LevelCreateSchema = z.object(LevelCreateShape);
 
-// ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
-const TOOLS: string[] = [
-  // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "wall.create",
+server.registerTool(
   "level.create",
-  "grid.create",
-  "floor.create",
-  "ceiling.create",
-  "door.place",
-  "window.place",
-];
-
-registerTools(TOOLS);
-
-async function main() {
-  await server.connect(new StdioServerTransport());
-  // opcional: log no bloqueante para confirmar arranque en local
-  if (process.env.DEBUG?.toLowerCase() === "true") {
-    console.error(`[${SERVER_NAME}] ready. Bridge -> ${REVIT_ENDPOINT}`);
+  {
+    title: "Create Level",
+    description: "Crea un nivel a cierta elevación (m)",
+    inputSchema: LevelCreateShape,
+  },
+  async (args: z.infer<typeof LevelCreateSchema>) => {
+    const result = await postRevit("level.create", args);
+    return asText(result);
   }
-}
+);
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// --- grid.create ---
+const GridCreateShape = {
+  start: z.object({ x: z.number(), y: z.number() }),
+  end: z.object({ x: z.number(), y: z.number() }),
+  name: z.string().optional(),
+};
+const GridCreateSchema = z.object(GridCreateShape);
+
+server.registerTool(
+  "grid.create",
+  {
+    title: "Create Grid",
+    description: "Crea una retícula",
+    inputSchema: GridCreateShape,
+  },
+  async (args: z.infer<typeof GridCreateSchema>) => {
+    const result = await postRevit("grid.create", args);
+    return asText(result);
+  }
+);
+
+// --- floor.create ---
+const FloorCreateShape = {
+  level: z.string().optional(),
+  floorType: z.string().optional(),
+  profile: z.array(z.object({ x: z.number(), y: z.number() })).min(3),
+};
+const FloorCreateSchema = z.object(FloorCreateShape);
+
+server.registerTool(
+  "floor.create",
+  {
+    title: "Create Floor",
+    description: "Crea un piso por contorno en un nivel",
+    inputSchema: FloorCreateShape,
+  },
+  async (args: z.infer<typeof FloorCreateSchema>) => {
+    const result = await postRevit("floor.create", args);
+    return asText(result);
+  }
+);
+
+// --- ceiling.create --- (expone la acción; el bridge responderá NotImplemented)
+server.registerTool(
+  "ceiling.create",
+  {
+    title: "Create Ceiling (sketch)",
+    description: "Intento de crear techo por sketch (no implementado en el bridge)",
+    inputSchema: {}, // no usa args en el bridge actual
+  },
+  async () => {
+    const result = await postRevit("ceiling.create", {}); // propagará el error del bridge
+    return asText(result);
+  }
+);
+
+// --- door.place ---
+const DoorPlaceShape = {
+  // ahora opcionales, el bridge puede resolver host y punto
+  hostWallId: z.number().int().optional(),
+  level: z.string().optional(),
+  familySymbol: z.string().optional(),
+  point: z.object({ x: z.number(), y: z.number() }).optional(),
+  offset_m: z.number().optional(),
+
+  // nuevos parámetros soportados por tu bridge:
+  offsetAlong_m: z.number().optional(),        // distancia (m) a lo largo del muro
+  alongNormalized: z.number().min(0).max(1).optional(), // 0..1 a lo largo del muro
+
+  flipHand: z.boolean().optional(),
+  flipFacing: z.boolean().optional(),
+};
+const DoorPlaceSchema = z.object(DoorPlaceShape);
+
+server.registerTool(
+  "door.place",
+  {
+    title: "Place Door",
+    description:
+      "Coloca una puerta. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
+    inputSchema: DoorPlaceShape,
+  },
+  async (args: z.infer<typeof DoorPlaceSchema>) => {
+    const result = await postRevit("door.place", args);
+    return asText(result);
+  }
+);
+
+// --- window.place --- (mismo shape que puerta)
+const WindowPlaceShape = DoorPlaceShape;
+const WindowPlaceSchema = DoorPlaceSchema;
+
+server.registerTool(
+  "window.place",
+  {
+    title: "Place Window",
+    description:
+      "Coloca una ventana. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
+    inputSchema: WindowPlaceShape,
+  },
+  async (args: z.infer<typeof WindowPlaceSchema>) => {
+    const result = await postRevit("window.place", args);
+    return asText(result);
+  }
+);
+
+// Arrancar stdio
+const transport = new StdioServerTransport();
+await server.connect(transport);

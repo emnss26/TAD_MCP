@@ -1,76 +1,220 @@
-// src/index.ts
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+// mcp_query/src/index.ts
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+// z no es estrictamente necesario aquí, pero lo dejamos por consistencia con otros paquetes
+import { z } from "zod";
+import { postRevit } from "./bridge.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_query";   // cámbialo por MCP
-const SERVER_VERSION = "0.1.0";
-const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
+// Servidor MCP
+const server = new McpServer({
+  name: "mcp-query",
+  version: "1.0.0",
+});
 
-// Helper para llamar al Bridge (C#)
-async function callRevit(action: string, args: any) {
-  const res = await fetch(REVIT_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, args }),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) {
-    const msg = payload?.message || `HTTP ${res.status}`;
-    throw new Error(`RevitBridge error on '${action}': ${msg}`);
-  }
-  return payload.data;
-}
+// Helper: responder como texto (JSON pretty)
+const asText = (obj: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+});
 
-const server = new Server(
-  { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
+// Reutilizamos un “schema sin args”
+const NoArgs: Record<string, never> = {};
+
+/* ============================
+   levels.list
+   ============================ */
+server.registerTool(
+  "levels.list",
+  {
+    title: "List levels",
+    description: "Devuelve todos los niveles del documento.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("levels.list", {}))
 );
 
-// Registrador rápido de tools con schema abierto (proxy 1:1 al action del Bridge)
-function registerTools(names: string[]) {
-  for (const name of names) {
-    server.tool(
-      {
-        name,
-        description: `Proxy of RevitBridge action '${name}'.`,
-        // dejamos schema abierto para no encorsetar; tu validación vive en C#
-        inputSchema: { type: "object", additionalProperties: true },
-      },
-      async (args) => callRevit(name, args)
-    );
-  }
-}
-
-// ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
-const TOOLS: string[] = [
-  // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "levels.list",
+/* ============================
+   walltypes.list
+   ============================ */
+server.registerTool(
   "walltypes.list",
+  {
+    title: "List wall types",
+    description: "Tipos de muro disponibles.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("walltypes.list", {}))
+);
+
+/* ============================
+   view.active
+   ============================ */
+server.registerTool(
+  "view.active",
+  {
+    title: "Active view info",
+    description: "Información de la vista activa (id, nombre, tipo, nivel si aplica).",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("view.active", {}))
+);
+
+/* ============================
+   views.list
+   ============================ */
+server.registerTool(
   "views.list",
+  {
+    title: "List views",
+    description: "Lista de vistas no-template.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("views.list", {}))
+);
+
+/* ============================
+   schedules.list
+   ============================ */
+server.registerTool(
   "schedules.list",
+  {
+    title: "List schedules",
+    description: "Lista de schedules.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("schedules.list", {}))
+);
+
+/* ============================
+   materials.list
+   ============================ */
+server.registerTool(
   "materials.list",
+  {
+    title: "List materials",
+    description: "Lista de materiales del documento.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("materials.list", {}))
+);
+
+/* ============================
+   categories.list
+   ============================ */
+server.registerTool(
   "categories.list",
+  {
+    title: "List categories",
+    description: "Categorías del documento (BuiltInCategory incluido).",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("categories.list", {}))
+);
+
+/* ============================
+   families.types.list
+   ============================ */
+server.registerTool(
   "families.types.list",
+  {
+    title: "List family types",
+    description: "Lista de FamilySymbol (familia, tipo, categoría).",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("families.types.list", {}))
+);
+
+/* ============================
+   links.list
+   ============================ */
+server.registerTool(
   "links.list",
+  {
+    title: "List Revit links",
+    description: "Instancias de Revit Link (id, nombre, pinned).",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("links.list", {}))
+);
+
+/* ============================
+   imports.list
+   ============================ */
+server.registerTool(
   "imports.list",
+  {
+    title: "List CAD imports",
+    description: "ImportInstance en el documento.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("imports.list", {}))
+);
+
+/* ============================
+   worksets.list
+   ============================ */
+server.registerTool(
   "worksets.list",
+  {
+    title: "List worksets",
+    description: "Lista de worksets (id, nombre, tipo).",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("worksets.list", {}))
+);
+
+/* ============================
+   textnotes.find
+   ============================ */
+server.registerTool(
   "textnotes.find",
+  {
+    title: "Find text notes in active view",
+    description: "Devuelve TextNotes (id, texto) de la vista activa.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("textnotes.find", {}))
+);
+
+/* ============================
+   ducttypes.list
+   ============================ */
+server.registerTool(
   "ducttypes.list",
+  {
+    title: "List duct types",
+    description: "Tipos de ducto (MEP) disponibles.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("ducttypes.list", {}))
+);
+
+/* ============================
+   pipetypes.list
+   ============================ */
+server.registerTool(
   "pipetypes.list",
+  {
+    title: "List pipe types",
+    description: "Tipos de tubería disponibles.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("pipetypes.list", {}))
+);
+
+/* ============================
+   cabletraytypes.list
+   ============================ */
+server.registerTool(
   "cabletraytypes.list",
-];
+  {
+    title: "List cable tray types",
+    description: "Tipos de charola disponibles.",
+    inputSchema: NoArgs,
+  },
+  async () => asText(await postRevit("cabletraytypes.list", {}))
+);
 
-registerTools(TOOLS);
-
-async function main() {
-  await server.connect(new StdioServerTransport());
-  // opcional: log no bloqueante para confirmar arranque en local
-  if (process.env.DEBUG?.toLowerCase() === "true") {
-    console.error(`[${SERVER_NAME}] ready. Bridge -> ${REVIT_ENDPOINT}`);
-  }
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// stdio
+const transport = new StdioServerTransport();
+await server.connect(transport);

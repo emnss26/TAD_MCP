@@ -1,66 +1,135 @@
-// src/index.ts
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+// mcp_mep/src/index.ts
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { postRevit } from "./bridge.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_mep";   // cámbialo por MCP
-const SERVER_VERSION = "0.1.0";
-const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
+// Server MCP
+const server = new McpServer({
+  name: "mcp-mep",
+  version: "1.0.0",
+});
 
-// Helper para llamar al Bridge (C#)
-async function callRevit(action: string, args: any) {
-  const res = await fetch(REVIT_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, args }),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) {
-    const msg = payload?.message || `HTTP ${res.status}`;
-    throw new Error(`RevitBridge error on '${action}': ${msg}`);
+// Helper: respuesta como texto (JSON pretty)
+const asText = (obj: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+});
+
+// PT2 común
+const PtShape = z.object({ x: z.number(), y: z.number() });
+
+/* =========================================
+   mep.duct.create
+   ========================================= */
+const DuctCreateShape = {
+  level: z.string().optional(),
+  systemType: z.string().optional(),         // nombre o clasificación (SupplyAir, ReturnAir, etc)
+  ductType: z.string().optional(),
+  elevation_m: z.number().optional(),        // por defecto en bridge: 2.7
+  start: PtShape,
+  end: PtShape,
+  width_mm: z.number().optional(),           // rectangular
+  height_mm: z.number().optional(),          // rectangular
+  diameter_mm: z.number().optional(),        // redondo
+};
+const DuctCreateSchema = z.object(DuctCreateShape);
+
+server.registerTool(
+  "mep.duct.create",
+  {
+    title: "Create Duct",
+    description:
+      "Crea un ducto entre dos puntos XY (m). Soporta systemType/ductType y dimensiones opcionales.",
+    inputSchema: DuctCreateShape,
+  },
+  async (args: z.infer<typeof DuctCreateSchema>) => {
+    const result = await postRevit("mep.duct.create", args);
+    return asText(result);
   }
-  return payload.data;
-}
-
-const server = new Server(
-  { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
 );
 
-// Registrador rápido de tools con schema abierto (proxy 1:1 al action del Bridge)
-function registerTools(names: string[]) {
-  for (const name of names) {
-    server.tool(
-      {
-        name,
-        description: `Proxy of RevitBridge action '${name}'.`,
-        // dejamos schema abierto para no encorsetar; tu validación vive en C#
-        inputSchema: { type: "object", additionalProperties: true },
-      },
-      async (args) => callRevit(name, args)
-    );
-  }
-}
+/* =========================================
+   mep.pipe.create
+   ========================================= */
+const PipeCreateShape = {
+  level: z.string().optional(),
+  systemType: z.string().optional(),         // PipingSystemType (nombre)
+  pipeType: z.string().optional(),
+  elevation_m: z.number().optional(),        // por defecto en bridge: 2.5
+  start: PtShape,
+  end: PtShape,
+  diameter_mm: z.number().optional(),
+};
+const PipeCreateSchema = z.object(PipeCreateShape);
 
-// ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
-const TOOLS: string[] = [
-  // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "mep.duct.create",
+server.registerTool(
   "mep.pipe.create",
-  "mep.conduit.create",
-  "mep.cabletray.create",
-];
-
-registerTools(TOOLS);
-
-async function main() {
-  await server.connect(new StdioServerTransport());
-  // opcional: log no bloqueante para confirmar arranque en local
-  if (process.env.DEBUG?.toLowerCase() === "true") {
-    console.error(`[${SERVER_NAME}] ready. Bridge -> ${REVIT_ENDPOINT}`);
+  {
+    title: "Create Pipe",
+    description:
+      "Crea una tubería entre dos puntos XY (m). systemType/pipeType opcionales; diámetro opcional.",
+    inputSchema: PipeCreateShape,
+  },
+  async (args: z.infer<typeof PipeCreateSchema>) => {
+    const result = await postRevit("mep.pipe.create", args);
+    return asText(result);
   }
-}
+);
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/* =========================================
+   mep.conduit.create
+   ========================================= */
+const ConduitCreateShape = {
+  level: z.string().optional(),
+  conduitType: z.string().optional(),
+  elevation_m: z.number().optional(),        // por defecto en bridge: 2.4
+  start: PtShape,
+  end: PtShape,
+  diameter_mm: z.number().optional(),
+};
+const ConduitCreateSchema = z.object(ConduitCreateShape);
+
+server.registerTool(
+  "mep.conduit.create",
+  {
+    title: "Create Conduit",
+    description:
+      "Crea un conduit entre dos puntos XY (m). Tipo y diámetro opcionales.",
+    inputSchema: ConduitCreateShape,
+  },
+  async (args: z.infer<typeof ConduitCreateSchema>) => {
+    const result = await postRevit("mep.conduit.create", args);
+    return asText(result);
+  }
+);
+
+/* =========================================
+   mep.cabletray.create
+   ========================================= */
+const CableTrayCreateShape = {
+  level: z.string().optional(),
+  cableTrayType: z.string().optional(),
+  elevation_m: z.number().optional(),        // por defecto en bridge: 2.7
+  start: PtShape,
+  end: PtShape,
+};
+const CableTrayCreateSchema = z.object(CableTrayCreateShape);
+
+server.registerTool(
+  "mep.cabletray.create",
+  {
+    title: "Create Cable Tray",
+    description:
+      "Crea una charola entre dos puntos XY (m). Tipo opcional.",
+    inputSchema: CableTrayCreateShape,
+  },
+  async (args: z.infer<typeof CableTrayCreateSchema>) => {
+    const result = await postRevit("mep.cabletray.create", args);
+    return asText(result);
+  }
+);
+
+// stdio
+const transport = new StdioServerTransport();
+await server.connect(transport);

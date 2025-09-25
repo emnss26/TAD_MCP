@@ -1,68 +1,144 @@
-// src/index.ts
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+// mcp_qa/src/index.ts
+import "dotenv/config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { postRevit } from "./bridge.js";
 
-const SERVER_NAME = process.env.MCP_NAME ?? "mcp_qa";   // cámbialo por MCP
-const SERVER_VERSION = "0.1.0";
-const REVIT_ENDPOINT = process.env.REVIT_ENDPOINT ?? "http://127.0.0.1:55234/mcp";
+// Server MCP
+const server = new McpServer({
+  name: "mcp-qa",
+  version: "1.0.0",
+});
 
-// Helper para llamar al Bridge (C#)
-async function callRevit(action: string, args: any) {
-  const res = await fetch(REVIT_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, args }),
-  });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok || payload?.ok === false) {
-    const msg = payload?.message || `HTTP ${res.status}`;
-    throw new Error(`RevitBridge error on '${action}': ${msg}`);
+// Helper: devolver JSON pretty como texto
+const asText = (obj: unknown) => ({
+  content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
+});
+
+/* =========================================
+   qa.fix.pin_all_links
+   ========================================= */
+server.registerTool(
+  "qa.fix.pin_all_links",
+  {
+    title: "Pin all Revit links",
+    description: "Pone pin a todos los Revit Link Instances del modelo.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await postRevit("qa.fix.pin_all_links", {});
+    return asText(result);
   }
-  return payload.data;
-}
-
-const server = new Server(
-  { name: SERVER_NAME, version: SERVER_VERSION },
-  { capabilities: { tools: {} } }
 );
 
-// Registrador rápido de tools con schema abierto (proxy 1:1 al action del Bridge)
-function registerTools(names: string[]) {
-  for (const name of names) {
-    server.tool(
-      {
-        name,
-        description: `Proxy of RevitBridge action '${name}'.`,
-        // dejamos schema abierto para no encorsetar; tu validación vive en C#
-        inputSchema: { type: "object", additionalProperties: true },
-      },
-      async (args) => callRevit(name, args)
-    );
-  }
-}
-
-// ======== CAMBIA ESTA LISTA SEGÚN EL MCP ========
-const TOOLS: string[] = [
-  // EJEMPLO para Arquitectura (sustitúyelo abajo por cada MCP)
-  "qa.fix.pin_all_links",
+/* =========================================
+   qa.fix.delete_imports
+   ========================================= */
+server.registerTool(
   "qa.fix.delete_imports",
-  "qa.fix.apply_view_templates",
-  "qa.fix.remove_textnotes",
-  "qa.fix.delete_unused_types",
-  "qa.fix.rename_views",
-];
-
-registerTools(TOOLS);
-
-async function main() {
-  await server.connect(new StdioServerTransport());
-  // opcional: log no bloqueante para confirmar arranque en local
-  if (process.env.DEBUG?.toLowerCase() === "true") {
-    console.error(`[${SERVER_NAME}] ready. Bridge -> ${REVIT_ENDPOINT}`);
+  {
+    title: "Delete all CAD imports",
+    description: "Elimina todos los ImportInstance (CAD) del documento.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await postRevit("qa.fix.delete_imports", {});
+    return asText(result);
   }
-}
+);
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/* =========================================
+   qa.fix.apply_view_templates
+   - soporta autoPickFirst y devuelve lista si hay varias plantillas
+   ========================================= */
+const ApplyViewTemplatesShape = {
+  templateName: z.string().optional(),
+  templateId: z.number().int().optional(),
+  onlyWithoutTemplate: z.boolean().optional(), // default true en bridge
+  viewIds: z.array(z.number().int()).optional(),
+  autoPickFirst: z.boolean().optional(),
+};
+const ApplyViewTemplatesSchema = z.object(ApplyViewTemplatesShape);
+
+server.registerTool(
+  "qa.fix.apply_view_templates",
+  {
+    title: "Apply view template to views",
+    description:
+      "Aplica una plantilla a vistas. Si no se especifica plantilla y hay varias, el bridge devuelve la lista de opciones.",
+    inputSchema: ApplyViewTemplatesShape,
+  },
+  async (args: z.infer<typeof ApplyViewTemplatesSchema>) => {
+    const result = await postRevit("qa.fix.apply_view_templates", args);
+    return asText(result);
+  }
+);
+
+/* =========================================
+   qa.fix.remove_textnotes
+   ========================================= */
+const RemoveTextNotesShape = {
+  viewId: z.number().int().optional(),
+};
+const RemoveTextNotesSchema = z.object(RemoveTextNotesShape);
+
+server.registerTool(
+  "qa.fix.remove_textnotes",
+  {
+    title: "Remove text notes",
+    description:
+      "Elimina todas las TextNotes de la vista activa o de la vista indicada por viewId.",
+    inputSchema: RemoveTextNotesShape,
+  },
+  async (args: z.infer<typeof RemoveTextNotesSchema>) => {
+    const result = await postRevit("qa.fix.remove_textnotes", args);
+    return asText(result);
+  }
+);
+
+/* =========================================
+   qa.fix.delete_unused_types
+   ========================================= */
+server.registerTool(
+  "qa.fix.delete_unused_types",
+  {
+    title: "Delete unused element types",
+    description:
+      "Intenta borrar ElementTypes no usados (excluye ViewFamilyType y TitleBlocks).",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await postRevit("qa.fix.delete_unused_types", {});
+    return asText(result);
+  }
+);
+
+/* =========================================
+   qa.fix.rename_views
+   ========================================= */
+const RenameViewsShape = {
+  prefix: z.string().optional(),
+  find: z.string().optional(),
+  replace: z.string().optional(),
+  viewIds: z.array(z.number().int()).optional(),
+};
+const RenameViewsSchema = z.object(RenameViewsShape);
+
+server.registerTool(
+  "qa.fix.rename_views",
+  {
+    title: "Rename views",
+    description:
+      "Renombra vistas (find/replace y/o prefix). Si no se pasan viewIds, aplica a todas las vistas no plantilla.",
+    inputSchema: RenameViewsShape,
+  },
+  async (args: z.infer<typeof RenameViewsSchema>) => {
+    const result = await postRevit("qa.fix.rename_views", args);
+    return asText(result);
+  }
+);
+
+// stdio transport
+const transport = new StdioServerTransport();
+await server.connect(transport);

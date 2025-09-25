@@ -1,7 +1,7 @@
 {
   "name": "mcp_mep",
   "version": "1.0.0",
- "type": "module",
+  "type": "module",
   "private": true,
   "main": "dist/index.js",
   "scripts": {
@@ -14,7 +14,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.18.2"
+    "@modelcontextprotocol/sdk": "^1.18.2",
+    "dotenv": "^17.2.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",

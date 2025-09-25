@@ -36,7 +36,7 @@ const DuctCreateShape = {
 const DuctCreateSchema = z.object(DuctCreateShape);
 
 server.registerTool(
-  "mep.duct.create",
+  "mep_duct_create",
   {
     title: "Create Duct",
     description:
@@ -64,7 +64,7 @@ const PipeCreateShape = {
 const PipeCreateSchema = z.object(PipeCreateShape);
 
 server.registerTool(
-  "mep.pipe.create",
+  "mep_pipe_create",
   {
     title: "Create Pipe",
     description:
@@ -91,7 +91,7 @@ const ConduitCreateShape = {
 const ConduitCreateSchema = z.object(ConduitCreateShape);
 
 server.registerTool(
-  "mep.conduit.create",
+  "mep_conduit_create",
   {
     title: "Create Conduit",
     description:
@@ -117,7 +117,7 @@ const CableTrayCreateShape = {
 const CableTrayCreateSchema = z.object(CableTrayCreateShape);
 
 server.registerTool(
-  "mep.cabletray.create",
+  "mep_cabletray_create",
   {
     title: "Create Cable Tray",
     description:

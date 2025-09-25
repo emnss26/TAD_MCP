@@ -32,7 +32,7 @@ const ExportNwcShape = {
 const ExportNwcSchema = z.object(ExportNwcShape);
 
 server.registerTool(
-  "export.nwc",
+  "export_nwc",
   {
     title: "Export NWC",
     description:
@@ -57,7 +57,7 @@ const ExportDwgShape = {
 const ExportDwgSchema = z.object(ExportDwgShape);
 
 server.registerTool(
-  "export.dwg",
+  "export_dwg",
   {
     title: "Export DWG",
     description:
@@ -82,7 +82,7 @@ const ExportPdfShape = {
 const ExportPdfSchema = z.object(ExportPdfShape);
 
 server.registerTool(
-  "export.pdf",
+  "export_pdf",
   {
     title: "Export PDF",
     description:

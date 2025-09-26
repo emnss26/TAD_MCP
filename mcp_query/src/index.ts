@@ -215,6 +215,47 @@ server.registerTool(
   async () => asText(await postRevit("cabletraytypes.list", {}))
 );
 
+/* ============================
+   selection.info
+   ============================ */
+const SelectionInfoShape = {
+  includeParameters: z.boolean().optional(),
+  topNParams: z.number().int().min(1).max(1000).optional(),
+};
+const SelectionInfoSchema = z.object(SelectionInfoShape);
+
+server.registerTool(
+  "selection_info",
+  {
+    title: "Selection info",
+    description: "Devuelve información de los elementos actualmente seleccionados.",
+    inputSchema: SelectionInfoShape,
+  },
+  async (args: z.infer<typeof SelectionInfoSchema>) =>
+    asText(await postRevit("selection.info", args))
+);
+
+/* ============================
+   element.info
+   ============================ */
+const ElementInfoShape = {
+  elementId: z.number().int(),
+  includeParameters: z.boolean().optional(),
+  topNParams: z.number().int().min(1).max(1000).optional(),
+};
+const ElementInfoSchema = z.object(ElementInfoShape);
+
+server.registerTool(
+  "element_info",
+  {
+    title: "Element info by id",
+    description: "Devuelve información detallada de un elemento por Id.",
+    inputSchema: ElementInfoShape,
+  },
+  async (args: z.infer<typeof ElementInfoSchema>) =>
+    asText(await postRevit("element.info", args))
+);
+
 // stdio
 const transport = new StdioServerTransport();
 await server.connect(transport);

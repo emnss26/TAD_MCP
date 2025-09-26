@@ -57,6 +57,7 @@
     <Compile Include="Actions\GraphicsActions.cs" />
     <Compile Include="Actions\MepDuctActions.cs" />
     <Compile Include="Actions\MepPipeConduitActions.cs" />
+    <Compile Include="Actions\ParamsActions.cs" />
     <Compile Include="Actions\QaActions.cs" />
     <Compile Include="Actions\QueryActions.cs" />
     <Compile Include="Actions\StructureActions.cs" />

@@ -89,7 +89,6 @@ namespace mcp_app
                 ["mep.cabletray.create"] = MepPipeConduitActions.CableTrayCreate,
 
                 // --- GRAPHICS ---
-
                 ["view.category.set_visibility"] = GraphicsActions.SetVisibility,
                 ["view.category.override_color"] = GraphicsActions.OverrideColor,
                 ["view.category.clear_overrides"] = GraphicsActions.ClearOverrides,
@@ -102,6 +101,11 @@ namespace mcp_app
                 ["sheets.create"] = GraphicsActions.SheetsCreate,
                 ["sheets.add_views"] = GraphicsActions.SheetsAddViews,
                 ["imports.hide"] = GraphicsActions.HideImports,
+
+                // --- PARAMS ---
+                ["params.get"] = ParamsActions.ParamsGet,
+                ["params.set"] = ParamsActions.ParamsSet,
+                ["params.bulk_from_table"] = ParamsActions.ParamsBulkFromTable,
 
                 // --- QUERY ---
                 ["levels.list"] = QueryActions.LevelsList,
@@ -116,6 +120,8 @@ namespace mcp_app
                 ["worksets.list"] = QueryActions.WorksetsList,
                 ["textnotes.find"] = QueryActions.TextNotesFind,
                 ["view.active"] = QueryActions.ActiveViewInfo,
+                ["selection.info"] = QueryActions.SelectionInfo,
+                ["element.info"] = QueryActions.ElementInfo,
 
                 // --- EXPORT ---
                 ["export.nwc"] = ExportActions.ExportNwc,

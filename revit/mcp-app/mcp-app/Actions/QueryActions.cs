@@ -232,5 +232,163 @@ namespace mcp_app.Actions
                 return new { count = items.Count, items };
             };
         }
+
+        private static object ParamToJson(Parameter p)
+        {
+            if (p == null) return null;
+            string name = p.Definition?.Name ?? p.Id.IntegerValue.ToString();
+            object val = null;
+            try
+            {
+                switch (p.StorageType)
+                {
+                    case StorageType.Double: val = p.AsDouble(); break;
+                    case StorageType.Integer: val = p.AsInteger(); break;
+                    case StorageType.String: val = p.AsString(); break;
+                    case StorageType.ElementId: val = p.AsElementId()?.IntegerValue; break;
+                }
+            }
+            catch { /* ignore */ }
+
+            string valueString = null;
+            try { valueString = p.AsValueString(); } catch { /* algunos params no formatean */ }
+
+            return new
+            {
+                id = p.Id?.IntegerValue,
+                name,
+                storageType = p.StorageType.ToString(),
+                value = val,
+                valueString,
+                isReadOnly = p.IsReadOnly
+            };
+        }
+
+        public static Func<UIApplication, object> SelectionInfo(JObject args)
+        {
+            bool includeParams = args?["includeParameters"]?.ToObject<bool?>() ?? true;
+            int topN = args?["topNParams"]?.ToObject<int?>() ?? 50;
+
+            return (UIApplication app) =>
+            {
+                var uidoc = app.ActiveUIDocument ?? throw new Exception("No active document.");
+                var doc = uidoc.Document;
+                var sel = uidoc.Selection.GetElementIds();
+                var items = new List<object>();
+
+                foreach (var id in sel)
+                {
+                    var el = doc.GetElement(id);
+                    items.Add(BuildElementInfo(doc, el, includeParams, topN));
+                }
+
+                return new
+                {
+                    count = items.Count,
+                    items
+                };
+            };
+        }
+
+        public static Func<UIApplication, object> ElementInfo(JObject args)
+        {
+            int elementId = args?["elementId"]?.ToObject<int>() ?? 0;
+            bool includeParams = args?["includeParameters"]?.ToObject<bool?>() ?? true;
+            int topN = args?["topNParams"]?.ToObject<int?>() ?? 50;
+
+            if (elementId <= 0)
+                throw new Exception("element.info requires a valid elementId.");
+
+            return (UIApplication app) =>
+            {
+                var doc = app.ActiveUIDocument?.Document ?? throw new Exception("No active document.");
+                var el = doc.GetElement(new ElementId(elementId)) ?? throw new Exception($"Element {elementId} not found.");
+                var info = BuildElementInfo(doc, el, includeParams, topN);
+                return info;
+            };
+        }
+
+        private static double? GetDoubleParam(Element e, BuiltInParameter bip)
+        {
+            var p = e?.get_Parameter(bip);
+            if (p == null || p.StorageType != StorageType.Double) return null;
+            try { return p.AsDouble(); } catch { return null; }
+        }
+
+        private static object BuildElementInfo(Document doc, Element el, bool includeParams, int topNParams)
+        {
+            if (el == null) return null;
+
+            var cat = el.Category?.Name;
+            var typeId = el.GetTypeId();
+            var typeName = (typeId != ElementId.InvalidElementId) ? doc.GetElement(typeId)?.Name : null;
+
+            // Mejor esfuerzo para conseguir nivel
+            var levelId = (el as FamilyInstance)?.LevelId;
+            if (levelId == null || levelId == ElementId.InvalidElementId)
+                levelId = el.LevelId;
+            var levelName = (levelId != null && levelId != ElementId.InvalidElementId)
+                ? doc.GetElement(levelId)?.Name
+                : null;
+
+            // BBox
+            var bb = el.get_BoundingBox(null);
+            object bbox = (bb != null)
+                ? new
+                {
+                    min = new { x = bb.Min.X, y = bb.Min.Y, z = bb.Min.Z },
+                    max = new { x = bb.Max.X, y = bb.Max.Y, z = bb.Max.Z }
+                }
+                : null;
+
+            // Métricas comunes (mejor esfuerzo)
+            double? length_ft = null, area_ft2 = null, vol_ft3 = null;
+
+            // length: si hay LocationCurve
+            var lc = (el.Location as LocationCurve);
+            if (lc?.Curve != null) length_ft = lc.Curve.Length;
+
+            // área/volumen típicos
+            area_ft2 = GetDoubleParam(el, BuiltInParameter.HOST_AREA_COMPUTED);
+            vol_ft3 = GetDoubleParam(el, BuiltInParameter.HOST_VOLUME_COMPUTED);
+
+            // Convertir a SI donde aplique
+            double? length_m = length_ft.HasValue
+                ? UnitUtils.ConvertFromInternalUnits(length_ft.Value, UnitTypeId.Meters)
+                : (double?)null;
+            double? area_m2 = area_ft2.HasValue
+                ? UnitUtils.ConvertFromInternalUnits(area_ft2.Value, UnitTypeId.SquareMeters)
+                : (double?)null;
+            double? volume_m3 = vol_ft3.HasValue
+                ? UnitUtils.ConvertFromInternalUnits(vol_ft3.Value, UnitTypeId.CubicMeters)
+                : (double?)null;
+
+            object parameters = null;
+            if (includeParams)
+            {
+                var ps = el.Parameters.Cast<Parameter>()
+                    .Take(topNParams <= 0 ? int.MaxValue : topNParams)
+                    .Select(ParamToJson)
+                    .ToList();
+                parameters = ps;
+            }
+
+            return new
+            {
+                elementId = el.Id.IntegerValue,
+                category = cat,
+                typeName,
+                level = levelName,
+                name = el.Name,
+                bbox = bbox,
+                metrics = new
+                {
+                    length_m = length_m,
+                    area_m2 = area_m2,
+                    volume_m3 = volume_m3
+                },
+                parameters
+            };
+        }
     }
 }

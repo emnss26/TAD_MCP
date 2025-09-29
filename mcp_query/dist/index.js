@@ -2,6 +2,8 @@
 import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+// z no es estrictamente necesario aquí, pero lo dejamos por consistencia con otros paquetes
+import { z } from "zod";
 import { postRevit } from "./bridge.js";
 // Servidor MCP
 const server = new McpServer({
@@ -134,6 +136,33 @@ server.registerTool("cabletraytypes_list", {
     description: "Tipos de charola disponibles.",
     inputSchema: NoArgs,
 }, async () => asText(await postRevit("cabletraytypes.list", {})));
+/* ============================
+   selection.info
+   ============================ */
+const SelectionInfoShape = {
+    includeParameters: z.boolean().optional(),
+    topNParams: z.number().int().min(1).max(1000).optional(),
+};
+const SelectionInfoSchema = z.object(SelectionInfoShape);
+server.registerTool("selection_info", {
+    title: "Selection info",
+    description: "Devuelve información de los elementos actualmente seleccionados.",
+    inputSchema: SelectionInfoShape,
+}, async (args) => asText(await postRevit("selection.info", args)));
+/* ============================
+   element.info
+   ============================ */
+const ElementInfoShape = {
+    elementId: z.number().int(),
+    includeParameters: z.boolean().optional(),
+    topNParams: z.number().int().min(1).max(1000).optional(),
+};
+const ElementInfoSchema = z.object(ElementInfoShape);
+server.registerTool("element_info", {
+    title: "Element info by id",
+    description: "Devuelve información detallada de un elemento por Id.",
+    inputSchema: ElementInfoShape,
+}, async (args) => asText(await postRevit("element.info", args)));
 // stdio
 const transport = new StdioServerTransport();
 await server.connect(transport);

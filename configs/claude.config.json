@@ -3,45 +3,52 @@
     "revit-arch": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_arch"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_arch"
     },
     "revit-str": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_str"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_str"
     },
     "revit-mep": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_mep"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_mep"
     },
     "revit-graphics": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_graphics"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_graphics"
     },
     "revit-qa": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_qa"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_qa"
     },
     "revit-export": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_export"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_export"
     },
     "revit-query": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
-      "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_query"
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_query"
     },
     "revit-qto": {
-    "command": "C:/Program Files/nodejs/node.exe",
-    "args": ["C:/Users/tu_usuario/TAD-MCP/mcp_qto/dist/index.js"]
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["dist/index.js"],
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_qto"
     },
     "revit-doc": {
       "command": "C:/Program Files/nodejs/node.exe",
-      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp_doc/dist/index.js"]
-    }  
+      "args": ["dist/index.js"],
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_doc"
+    },
+    "revit-params": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["dist/index.js"],
+      "cwd": "C:/Users/enriq/Desktop/TAD-MCP/mcp_params"
+    }
   }
 }

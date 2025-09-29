@@ -82,10 +82,7 @@ namespace mcp_app
                 ["struct.beam.create"] = StructureActions.BeamCreate,
                 ["struct.column.create"] = StructureActions.ColumnCreate,
                 ["struct.floor.create"] = StructureActions.StructuralFloorCreate,
-                ["ducttypes.list"] = QueryActions.DuctTypesList,
-                ["pipetypes.list"] = QueryActions.PipeTypesList,
-                ["cabletraytypes.list"] = QueryActions.CableTrayTypesList,
-
+                
                 // --- MEP ---
                 ["mep.duct.create"] = MepDuctActions.DuctCreate,
                 ["mep.pipe.create"] = MepPipeConduitActions.PipeCreate,
@@ -102,7 +99,6 @@ namespace mcp_app
                 ["view.set_discipline"] = GraphicsActions.SetDiscipline,
                 ["view.set_phase"] = GraphicsActions.SetPhase,
                 ["views.duplicate"] = GraphicsActions.ViewsDuplicate,
-                
                 ["imports.hide"] = GraphicsActions.HideImports,
 
                 // --- PARAMS ---
@@ -132,6 +128,9 @@ namespace mcp_app
                 ["view.active"] = QueryActions.ActiveViewInfo,
                 ["selection.info"] = QueryActions.SelectionInfo,
                 ["element.info"] = QueryActions.ElementInfo,
+                ["ducttypes.list"] = QueryActions.DuctTypesList,
+                ["pipetypes.list"] = QueryActions.PipeTypesList,
+                ["cabletraytypes.list"] = QueryActions.CableTrayTypesList,
 
                 // --- EXPORT ---
                 ["export.nwc"] = ExportActions.ExportNwc,

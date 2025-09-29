@@ -96,24 +96,50 @@ namespace mcp_app.Actions
 
         private static string GetLevelName(Element el, Document doc)
         {
-            ElementId levelId = ElementId.InvalidElementId;
-
-            if (el is FamilyInstance fi && fi.LevelId != null && fi.LevelId != ElementId.InvalidElementId)
-                levelId = fi.LevelId;
-            else if (el.LevelId != null && el.LevelId != ElementId.InvalidElementId)
-                levelId = el.LevelId;
+            ElementId levelId = TryGetLevelId(el);
 
             if (levelId == ElementId.InvalidElementId)
+                return null;
+
+            return (doc.GetElement(levelId) as Level)?.Name;
+        }
+
+        private static ElementId TryGetLevelId(Element el)
+        {
+            // 1) FamilyInstance.LevelId
+            if (el is FamilyInstance fi && fi.LevelId != null && fi.LevelId != ElementId.InvalidElementId)
+                return fi.LevelId;
+
+            // 2) Propiedad directa LevelId (algunos elementos la tienen)
+            if (el.LevelId != null && el.LevelId != ElementId.InvalidElementId)
+                return el.LevelId;
+
+            // 3) Parámetros comunes de nivel (en orden de probabilidad)
+            var paramIds = new[]
             {
-                var p = el.get_Parameter(BuiltInParameter.RBS_START_LEVEL_PARAM);
-                if (p != null && p.StorageType == StorageType.ElementId)
+        BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM, // muy común
+        BuiltInParameter.LEVEL_PARAM,                    // genérico
+        BuiltInParameter.WALL_BASE_CONSTRAINT,           // muros
+        BuiltInParameter.FAMILY_LEVEL_PARAM,             // familias basadas en cara
+        BuiltInParameter.RBS_START_LEVEL_PARAM           // MEP
+    };
+
+            foreach (var bip in paramIds)
+            {
+                try
                 {
-                    try { levelId = p.AsElementId(); } catch { }
+                    var p = el.get_Parameter(bip);
+                    if (p != null && p.StorageType == StorageType.ElementId)
+                    {
+                        var id = p.AsElementId();
+                        if (id != null && id != ElementId.InvalidElementId)
+                            return id;
+                    }
                 }
+                catch { /* continuar */ }
             }
 
-            if (levelId == ElementId.InvalidElementId) return null;
-            return (doc.GetElement(levelId) as Level)?.Name;
+            return ElementId.InvalidElementId;
         }
 
         /* ------------------- GET ------------------- */
@@ -465,7 +491,7 @@ namespace mcp_app.Actions
                 foreach (var id in sel) result.Add(id.IntegerValue);
             }
 
-            // 3) por vista (colector limitado a la vista -> elementos visibles/propios)
+            // 3) base collector (opcionalmente por vista)
             FilteredElementCollector baseCollector;
             if (w != null && (w.viewId.HasValue || !string.IsNullOrWhiteSpace(w.viewName)))
             {
@@ -485,9 +511,34 @@ namespace mcp_app.Actions
 
             baseCollector = baseCollector.WhereElementIsNotElementType();
 
-            // 4) categories
-            var allowedCatIds = ResolveCategoryIds(doc, w);
-            // 5) tipos / familias / niveles
+            // 4) APLICAR CATEGORÍAS EN EL COLLECTOR (idioma-independiente)
+            var bicList = ResolveBuiltInCategories(doc, w);
+            if (bicList.Count > 0)
+            {
+                // Multicategoría
+                var catFilter = new ElementMulticategoryFilter(bicList);
+                baseCollector = baseCollector.WherePasses(catFilter);
+            }
+
+            // Fallback: si el usuario pasó nombres visibles de categorías y no BIC,
+            // nos quedamos con sus IDs para un segundo filtro manual.
+            var allowedCatIdsByName = new HashSet<int>();
+            if (w != null && (w.categories?.Length ?? 0) > 0)
+            {
+                foreach (var token in w.categories)
+                {
+                    if (TryParseBuiltInCategory(token, out _)) continue; // ya cubierto arriba
+                    try
+                    {
+                        foreach (Category c in doc.Settings.Categories)
+                            if (string.Equals(c.Name, token, StringComparison.OrdinalIgnoreCase))
+                                allowedCatIdsByName.Add(c.Id.IntegerValue);
+                    }
+                    catch { /* ignore */ }
+                }
+            }
+
+            // 5) otros filtros
             var wantTypeIds = new HashSet<int>((w?.typeIds ?? Array.Empty<int>()));
             var wantTypeNames = new HashSet<string>((w?.typeNames ?? Array.Empty<string>()), StringComparer.OrdinalIgnoreCase);
             var wantFamilyNames = new HashSet<string>((w?.familyNames ?? Array.Empty<string>()), StringComparer.OrdinalIgnoreCase);
@@ -497,13 +548,13 @@ namespace mcp_app.Actions
             foreach (var el in baseCollector)
             {
                 int id = el.Id.IntegerValue;
-                if (result.Contains(id)) continue; // ya agregado
+                if (result.Contains(id)) continue;
 
-                // category filter
-                if (allowedCatIds.Count > 0)
+                // Si hubo nombres visibles de categoría (no BIC), aplicamos filtro manual aquí
+                if (allowedCatIdsByName.Count > 0)
                 {
                     var catId = el.Category?.Id?.IntegerValue ?? -1;
-                    if (catId < 0 || !allowedCatIds.Contains(catId)) continue;
+                    if (catId < 0 || !allowedCatIdsByName.Contains(catId)) continue;
                 }
 
                 // type ids
@@ -530,15 +581,10 @@ namespace mcp_app.Actions
                 // level ids / names
                 if (wantLevelIds.Count > 0 || wantLevelNames.Count > 0)
                 {
-                    var lvlId = ElementId.InvalidElementId;
-                    if (el is FamilyInstance fi) lvlId = fi.LevelId;
-                    else if (el.LevelId != null) lvlId = el.LevelId;
-
-                    string lvlName = null;
-                    if (lvlId != ElementId.InvalidElementId)
-                        lvlName = (doc.GetElement(lvlId) as Level)?.Name;
-                    else
-                        lvlName = GetLevelName(el, doc);
+                    var lvlId = TryGetLevelId(el);
+                    string lvlName = lvlId != ElementId.InvalidElementId
+                        ? (doc.GetElement(lvlId) as Level)?.Name
+                        : null;
 
                     if (wantLevelIds.Count > 0)
                     {
@@ -629,6 +675,33 @@ namespace mcp_app.Actions
                 ok = false,
                 message = "params.bulk_from_table expects 'updates[]'. The TS server should parse CSV/XLSX and send updates[]."
             };
+        }
+
+        private static IList<BuiltInCategory> ResolveBuiltInCategories(Document doc, WhereClause w)
+        {
+            var bics = new HashSet<BuiltInCategory>();
+            if (w == null) return bics.ToList();
+
+            // Por tokens tipo "OST_Walls"
+            foreach (var token in w.categories ?? Array.Empty<string>())
+            {
+                if (TryParseBuiltInCategory(token, out var bic))
+                    bics.Add(bic);
+            }
+
+            // Por IDs numéricos (int) -> castear a BIC si aplica
+            foreach (var cid in w.categoryIds ?? Array.Empty<int>())
+            {
+                try
+                {
+                    var bic = (BuiltInCategory)cid; // en built-ins el Id es negativo y mapea al enum
+                    if (Enum.IsDefined(typeof(BuiltInCategory), bic))
+                        bics.Add(bic);
+                }
+                catch { /* ignorar */ }
+            }
+
+            return bics.ToList();
         }
     }
 }

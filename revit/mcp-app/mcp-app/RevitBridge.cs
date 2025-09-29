@@ -105,6 +105,7 @@ namespace mcp_app
                 ["params.get"] = ParamsActions.ParamsGet,
                 ["params.set"] = ParamsActions.ParamsSet,
                 ["params.bulk_from_table"] = ParamsActions.ParamsBulkFromTable,
+                ["params.set_where"] = ParamsActions.ParamsSetWhere,
 
                 // --- DOCUMENTS ---
                 ["sheets.create"] = DocActions.SheetsCreate,

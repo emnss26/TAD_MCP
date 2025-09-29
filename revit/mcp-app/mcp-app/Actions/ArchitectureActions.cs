@@ -1,6 +1,7 @@
 ﻿using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.DB.Architecture;
 
 using mcp_app.Actions;
 using mcp_app.Contracts;
@@ -384,6 +385,250 @@ namespace mcp_app.Actions
 
             // Si no se dio nada, usar el centro del muro
             return c.Evaluate(0.5, true);
+        }
+
+        public static Func<UIApplication, object> RoomsCreateOnLevels(JObject args)
+        {
+            var req = args.ToObject<RoomsCreateOnLevelsRequest>() ?? new RoomsCreateOnLevelsRequest();
+
+            return (UIApplication app) =>
+            {
+                var uidoc = app.ActiveUIDocument ?? throw new Exception("No active document.");
+                var doc = uidoc.Document;
+
+                var allLvls = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().ToList();
+                var levels = (req.levelNames != null && req.levelNames.Length > 0)
+                    ? allLvls.Where(l => req.levelNames.Any(n => n.Equals(l.Name, StringComparison.OrdinalIgnoreCase))).ToList()
+                    : allLvls.OrderBy(l => l.Elevation).ToList();
+
+                if (levels.Count == 0) throw new Exception("No target levels resolved.");
+
+                var created = new List<int>();
+                var failed = new List<object>();
+
+                using (var t = new Transaction(doc, "MCP: Rooms.CreateOnLevels"))
+                {
+                    t.Start();
+                    foreach (var lvl in levels)
+                    {
+                        try
+                        {
+                            bool placedAny = false;
+
+                            // Intento 1: usar NewRooms2(Level) por reflexión (auto-colocar en TODOS los recintos cerrados)
+                            if (req.placeOnlyEnclosed.GetValueOrDefault(true))
+                            {
+                                var creation = doc.Create;
+                                var mi = creation.GetType().GetMethod("NewRooms2", new Type[] { typeof(Level) });
+                                if (mi != null)
+                                {
+                                    var result = mi.Invoke(creation, new object[] { lvl }) as System.Collections.IEnumerable;
+                                    if (result != null)
+                                    {
+                                        foreach (var o in result)
+                                        {
+                                            // soporta IList<ElementId> sin referenciar tipo explícito
+                                            var prop = o?.GetType().GetProperty("IntegerValue");
+                                            if (prop != null)
+                                            {
+                                                int id = (int)prop.GetValue(o);
+                                                created.Add(id);
+                                                placedAny = true;
+                                            }
+                                            else if (o is ElementId eid)
+                                            {
+                                                created.Add(eid.IntegerValue);
+                                                placedAny = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Fallback: si no hay NewRooms2 o no creó nada, colocar una habitación por punto (si cae en un recinto)
+                            if (!placedAny)
+                            {
+                                // UV(0,0) es tentativa; el usuario puede mover/duplicar después.
+                                var room = doc.Create.NewRoom(lvl, new UV(0, 0));
+                                if (room != null) { created.Add(room.Id.IntegerValue); placedAny = true; }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            failed.Add(new { level = lvl.Name, error = ex.Message });
+                        }
+                    }
+                    t.Commit();
+                }
+
+                return new { created = created.Count, rooms = created, failed };
+            };
+        }
+
+        public static Func<UIApplication, object> FloorsFromRooms(JObject args)
+        {
+            var req = args.ToObject<FloorsFromRoomsRequest>() ?? new FloorsFromRoomsRequest();
+
+            return (UIApplication app) =>
+            {
+                var uidoc = app.ActiveUIDocument ?? throw new Exception("No active document.");
+                var doc = uidoc.Document;
+
+                if (req.roomIds == null || req.roomIds.Length == 0) throw new Exception("floors.from_rooms requires roomIds.");
+
+                // Resolver FloorType
+                FloorType ftype = null;
+                var ftypes = new FilteredElementCollector(doc).OfClass(typeof(FloorType)).Cast<FloorType>().ToList();
+                if (!string.IsNullOrWhiteSpace(req.floorType))
+                {
+                    ftype = ftypes.FirstOrDefault(t =>
+                        t.Name.Equals(req.floorType, StringComparison.OrdinalIgnoreCase) ||
+                        $"{t.FamilyName}: {t.Name}".Equals(req.floorType, StringComparison.OrdinalIgnoreCase));
+                    if (ftype == null) throw new Exception($"FloorType '{req.floorType}' not found.");
+                }
+                else
+                {
+                    ftype = ftypes.FirstOrDefault() ?? throw new Exception("No FloorType found.");
+                }
+
+                double offsetFt = Core.Units.MetersToFt(req.baseOffset_m.GetValueOrDefault(0.0));
+
+                var created = new List<object>();
+                var skipped = new List<object>();
+
+                var opts = new SpatialElementBoundaryOptions
+                {
+                    SpatialElementBoundaryLocation = SpatialElementBoundaryLocation.Finish
+                };
+
+                using (var t = new Transaction(doc, "MCP: Floors.FromRooms"))
+                {
+                    t.Start();
+                    foreach (var rid in req.roomIds)
+                    {
+                        try
+                        {
+                            var room = doc.GetElement(new ElementId(rid)) as Room;
+                            if (room == null || room.Location == null || room.Area <= 1e-6)
+                            {
+                                skipped.Add(new { roomId = rid, reason = "Room not found or not enclosed." });
+                                continue;
+                            }
+
+                            var level = doc.GetElement(room.LevelId) as Level;
+                            if (level == null) { skipped.Add(new { roomId = rid, reason = "Room has no valid level." }); continue; }
+
+                            var loopsRaw = room.GetBoundarySegments(opts);
+                            if (loopsRaw == null || loopsRaw.Count == 0)
+                            {
+                                skipped.Add(new { roomId = rid, reason = "No boundary segments." });
+                                continue;
+                            }
+
+                            // Construye CurveLoops trasladando a Z del nivel + offset (conserva líneas/arcos originales)
+                            var loops = new List<CurveLoop>();
+                            foreach (var segLoop in loopsRaw)
+                            {
+                                var cl = new CurveLoop();
+                                foreach (var seg in segLoop)
+                                {
+                                    var c = seg.GetCurve();
+                                    var zTarget = level.Elevation + offsetFt;
+                                    var dz = zTarget - c.GetEndPoint(0).Z;
+                                    var c2 = c.CreateTransformed(Transform.CreateTranslation(new XYZ(0, 0, dz)));
+                                    cl.Append(c2);
+                                }
+                                loops.Add(cl);
+                            }
+
+                            var fl = Floor.Create(doc, loops, ftype.Id, level.Id);
+                            created.Add(new { roomId = rid, floorId = fl.Id.IntegerValue });
+                        }
+                        catch (Exception ex)
+                        {
+                            skipped.Add(new { roomId = rid, error = ex.Message });
+                        }
+                    }
+                    t.Commit();
+                }
+
+                return new { created = created.Count, items = created, skipped = skipped.Count, skippedItems = skipped };
+            };
+        }
+
+        public static Func<UIApplication, object> CeilingsFromRooms(JObject args)
+        {
+            return (UIApplication app) =>
+            {
+                throw new Exception("ceilings.from_rooms not implemented yet (sketch ceilings require advanced handling).");
+            };
+        }
+
+        public static Func<UIApplication, object> RoofFootprintCreate(JObject args)
+        {
+            var req = args.ToObject<RoofFootprintCreateRequest>() ?? throw new Exception("Invalid args for roof.create_footprint.");
+            if (req.profile == null || req.profile.Length < 3) throw new Exception("Roof footprint requires at least 3 points.");
+            if (string.IsNullOrWhiteSpace(req.level)) throw new Exception("Level is required.");
+
+            return (UIApplication app) =>
+            {
+                var uidoc = app.ActiveUIDocument ?? throw new Exception("No active document.");
+                var doc = uidoc.Document;
+
+                // Nivel
+                var level = ViewHelpers.ResolveLevel(doc, req.level, uidoc.ActiveView);
+
+                // RoofType
+                RoofType rtype = null;
+                var rtypes = new FilteredElementCollector(doc).OfClass(typeof(RoofType)).Cast<RoofType>().ToList();
+                if (!string.IsNullOrWhiteSpace(req.roofType))
+                {
+                    rtype = rtypes.FirstOrDefault(rt =>
+                        rt.Name.Equals(req.roofType, StringComparison.OrdinalIgnoreCase) ||
+                        $"{rt.FamilyName}: {rt.Name}".Equals(req.roofType, StringComparison.OrdinalIgnoreCase));
+                    if (rtype == null) throw new Exception($"RoofType '{req.roofType}' not found.");
+                }
+                else
+                {
+                    rtype = rtypes.FirstOrDefault() ?? throw new Exception("No RoofType found.");
+                }
+
+                // Perfil cerrado
+                double ToFt(double m) => Core.Units.MetersToFt(m);
+                var ca = new CurveArray();
+                for (int i = 0; i < req.profile.Length; i++)
+                {
+                    var a = req.profile[i];
+                    var b = req.profile[(i + 1) % req.profile.Length];
+                    var p1 = new XYZ(ToFt(a.x), ToFt(a.y), level.Elevation);
+                    var p2 = new XYZ(ToFt(b.x), ToFt(b.y), level.Elevation);
+                    ca.Append(Line.CreateBound(p1, p2));
+                }
+
+                int id;
+                using (var t = new Transaction(doc, "MCP: Roof.CreateFootprint"))
+                {
+                    t.Start();
+                    ModelCurveArray footprintCurves;
+                    var roof = doc.Create.NewFootPrintRoof(ca, level, rtype, out footprintCurves);
+
+                    // Inclinación (grados → radianes), si viene
+                    if (req.slope.HasValue && req.slope.Value > 0)
+                    {
+                        double rad = req.slope.Value * Math.PI / 180.0;
+                        foreach (ModelCurve mc in footprintCurves)
+                        {
+                            roof.set_DefinesSlope(mc, true);
+                            roof.set_SlopeAngle(mc, rad);
+                        }
+                    }
+
+                    id = roof.Id.IntegerValue;
+                    t.Commit();
+                }
+
+                return new { elementId = id, used = new { level = level.Name, roofType = $"{rtype.FamilyName}: {rtype.Name}", slope_deg = req.slope } };
+            };
         }
 
     }

@@ -34,6 +34,14 @@
       "command": "C:/Program Files/nodejs/node.exe",
       "args": ["dist/index.js"],
       "cwd": "C:/Users/tu_usuario/TAD-MCP/mcp_query"
-    }
+    },
+    "revit-qto": {
+    "command": "C:/Program Files/nodejs/node.exe",
+    "args": ["C:/Users/tu_usuario/TAD-MCP/mcp_qto/dist/index.js"]
+    },
+    "revit-doc": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": ["C:/Users/tu_usuario/TAD-MCP/mcp_doc/dist/index.js"]
+    }  
   }
 }

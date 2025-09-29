@@ -15,12 +15,16 @@ const asText = (obj: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
 });
 
-// --- wall.create ---
+// ===== Shapes / Schemas reutilizables =====
+const Pt2Shape = { x: z.number(), y: z.number() };
+const Pt2Schema = z.object(Pt2Shape);
+
+// ===== wall.create =====
 const WallCreateShape = {
   level: z.string().optional(),
   wallType: z.string().optional(),
-  start: z.object({ x: z.number(), y: z.number() }),
-  end: z.object({ x: z.number(), y: z.number() }),
+  start: z.object(Pt2Shape),
+  end: z.object(Pt2Shape),
   height_m: z.number().optional(),
   structural: z.boolean().optional(),
 };
@@ -31,7 +35,7 @@ server.registerTool(
   {
     title: "Create Wall",
     description: "Crea un muro recto con tipo/nivel opcional",
-    inputSchema: WallCreateShape,
+    inputSchema: WallCreateShape, // <- SHAPE
   },
   async (args: z.infer<typeof WallCreateSchema>) => {
     const result = await postRevit("wall.create", args);
@@ -39,7 +43,7 @@ server.registerTool(
   }
 );
 
-// --- level.create ---
+// ===== level.create =====
 const LevelCreateShape = {
   elevation_m: z.number(),
   name: z.string().optional(),
@@ -51,7 +55,7 @@ server.registerTool(
   {
     title: "Create Level",
     description: "Crea un nivel a cierta elevación (m)",
-    inputSchema: LevelCreateShape,
+    inputSchema: LevelCreateShape, // <- SHAPE
   },
   async (args: z.infer<typeof LevelCreateSchema>) => {
     const result = await postRevit("level.create", args);
@@ -59,10 +63,10 @@ server.registerTool(
   }
 );
 
-// --- grid.create ---
+// ===== grid.create =====
 const GridCreateShape = {
-  start: z.object({ x: z.number(), y: z.number() }),
-  end: z.object({ x: z.number(), y: z.number() }),
+  start: z.object(Pt2Shape),
+  end: z.object(Pt2Shape),
   name: z.string().optional(),
 };
 const GridCreateSchema = z.object(GridCreateShape);
@@ -72,7 +76,7 @@ server.registerTool(
   {
     title: "Create Grid",
     description: "Crea una retícula",
-    inputSchema: GridCreateShape,
+    inputSchema: GridCreateShape, // <- SHAPE
   },
   async (args: z.infer<typeof GridCreateSchema>) => {
     const result = await postRevit("grid.create", args);
@@ -80,11 +84,11 @@ server.registerTool(
   }
 );
 
-// --- floor.create ---
+// ===== floor.create =====
 const FloorCreateShape = {
   level: z.string().optional(),
   floorType: z.string().optional(),
-  profile: z.array(z.object({ x: z.number(), y: z.number() })).min(3),
+  profile: z.array(z.object(Pt2Shape)).min(3),
 };
 const FloorCreateSchema = z.object(FloorCreateShape);
 
@@ -93,7 +97,7 @@ server.registerTool(
   {
     title: "Create Floor",
     description: "Crea un piso por contorno en un nivel",
-    inputSchema: FloorCreateShape,
+    inputSchema: FloorCreateShape, // <- SHAPE
   },
   async (args: z.infer<typeof FloorCreateSchema>) => {
     const result = await postRevit("floor.create", args);
@@ -101,13 +105,14 @@ server.registerTool(
   }
 );
 
-// --- ceiling.create --- (expone la acción; el bridge responderá NotImplemented)
+// ===== ceiling.create (NotImplemented en bridge) =====
 server.registerTool(
   "arch_ceiling_create",
   {
     title: "Create Ceiling (sketch)",
-    description: "Intento de crear techo por sketch (no implementado en el bridge)",
-    inputSchema: {}, // no usa args en el bridge actual
+    description:
+      "Intento de crear techo por sketch (no implementado en el bridge)",
+    inputSchema: {}, // <- SHAPE vacío
   },
   async () => {
     const result = await postRevit("ceiling.create", {}); // propagará el error del bridge
@@ -115,19 +120,15 @@ server.registerTool(
   }
 );
 
-// --- door.place ---
+// ===== door.place =====
 const DoorPlaceShape = {
-  // ahora opcionales, el bridge puede resolver host y punto
   hostWallId: z.number().int().optional(),
   level: z.string().optional(),
   familySymbol: z.string().optional(),
-  point: z.object({ x: z.number(), y: z.number() }).optional(),
+  point: z.object(Pt2Shape).optional(),
   offset_m: z.number().optional(),
-
-  // nuevos parámetros soportados por tu bridge:
-  offsetAlong_m: z.number().optional(),        // distancia (m) a lo largo del muro
-  alongNormalized: z.number().min(0).max(1).optional(), // 0..1 a lo largo del muro
-
+  offsetAlong_m: z.number().optional(),
+  alongNormalized: z.number().min(0).max(1).optional(),
   flipHand: z.boolean().optional(),
   flipFacing: z.boolean().optional(),
 };
@@ -139,7 +140,7 @@ server.registerTool(
     title: "Place Door",
     description:
       "Coloca una puerta. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
-    inputSchema: DoorPlaceShape,
+    inputSchema: DoorPlaceShape, // <- SHAPE
   },
   async (args: z.infer<typeof DoorPlaceSchema>) => {
     const result = await postRevit("door.place", args);
@@ -147,7 +148,7 @@ server.registerTool(
   }
 );
 
-// --- window.place --- (mismo shape que puerta)
+// ===== window.place (mismo shape que puerta) =====
 const WindowPlaceShape = DoorPlaceShape;
 const WindowPlaceSchema = DoorPlaceSchema;
 
@@ -157,10 +158,98 @@ server.registerTool(
     title: "Place Window",
     description:
       "Coloca una ventana. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
-    inputSchema: WindowPlaceShape,
+    inputSchema: WindowPlaceShape, // <- SHAPE
   },
   async (args: z.infer<typeof WindowPlaceSchema>) => {
     const result = await postRevit("window.place", args);
+    return asText(result);
+  }
+);
+
+// ===== rooms.create_on_levels =====
+const RoomsCreateOnLevelsShape = {
+  levelNames: z.array(z.string()).optional(),
+  placeOnlyEnclosed: z.boolean().optional(),
+};
+const RoomsCreateOnLevelsSchema = z.object(RoomsCreateOnLevelsShape);
+
+server.registerTool(
+  "arch_rooms_create_on_levels",
+  {
+    title: "Create Rooms on Levels",
+    description:
+      "Crea habitaciones automáticamente en los niveles indicados (o en todos si no se especifican).",
+    inputSchema: RoomsCreateOnLevelsShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof RoomsCreateOnLevelsSchema>) => {
+    const result = await postRevit("rooms.create_on_levels", args);
+    return asText(result);
+  }
+);
+
+// ===== floors.from_rooms =====
+const FloorsFromRoomsShape = {
+  roomIds: z.array(z.number().int()).min(1),
+  floorType: z.string().optional(),
+  baseOffset_m: z.number().optional(),
+};
+const FloorsFromRoomsSchema = z.object(FloorsFromRoomsShape);
+
+server.registerTool(
+  "arch_floors_from_rooms",
+  {
+    title: "Create Floors from Rooms",
+    description:
+      "Crea pisos siguiendo el borde de las habitaciones. Acepta floorType y baseOffset_m.",
+    inputSchema: FloorsFromRoomsShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof FloorsFromRoomsSchema>) => {
+    const result = await postRevit("floors.from_rooms", args);
+    return asText(result);
+  }
+);
+
+// ===== roof.create_footprint =====
+const RoofCreateFootprintShape = {
+  level: z.string(), // requerido por el bridge
+  roofType: z.string().optional(),
+  profile: z.array(z.object(Pt2Shape)).min(3),
+  slope: z.number().optional(), // grados
+};
+const RoofCreateFootprintSchema = z.object(RoofCreateFootprintShape);
+
+server.registerTool(
+  "arch_roof_create_footprint",
+  {
+    title: "Create Roof (Footprint)",
+    description:
+      "Crea una cubierta por huella en un nivel, con perfil cerrado y pendiente opcional (grados).",
+    inputSchema: RoofCreateFootprintShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof RoofCreateFootprintSchema>) => {
+    const result = await postRevit("roof.create_footprint", args);
+    return asText(result);
+  }
+);
+
+// ===== ceilings.from_rooms (opcional; NotImplemented en bridge) =====
+const CeilingsFromRoomsShape = {
+  roomIds: z.array(z.number().int()).min(1),
+  ceilingType: z.string().optional(),
+  height_m: z.number().optional(),
+};
+const CeilingsFromRoomsSchema = z.object(CeilingsFromRoomsShape);
+
+server.registerTool(
+  "arch_ceilings_from_rooms",
+  {
+    title: "Create Ceilings from Rooms",
+    description:
+      "Crea techos a partir de habitaciones (no implementado aún en el bridge; devolverá error).",
+    inputSchema: CeilingsFromRoomsShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof CeilingsFromRoomsSchema>) => {
+    const result = await postRevit("ceilings.from_rooms", args);
     return asText(result);
   }
 );

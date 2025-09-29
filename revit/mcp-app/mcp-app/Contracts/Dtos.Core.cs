@@ -157,4 +157,32 @@ namespace mcp_app.Contracts
         public int[] viewOrSheetIds { get; set; } // vistas u hojas
         public bool combine { get; set; } = true; // 1 PDF combinado
     }
+
+    internal class RoomsCreateOnLevelsRequest
+    {
+        public string[] levelNames { get; set; } = Array.Empty<string>();
+        public bool? placeOnlyEnclosed { get; set; } = true;
+    }
+
+    internal class FloorsFromRoomsRequest
+    {
+        public int[] roomIds { get; set; } = Array.Empty<int>();
+        public string floorType { get; set; }     // opcional ("Family: Type" o solo Type)
+        public double? baseOffset_m { get; set; } // opcional (por defecto 0)
+    }
+
+    internal class CeilingsFromRoomsRequest
+    {
+        public int[] roomIds { get; set; } = Array.Empty<int>();
+        public string ceilingType { get; set; }   // opcional
+        public double? height_m { get; set; }     // opcional
+    }
+
+    internal class RoofFootprintCreateRequest
+    {
+        public string level { get; set; }                 // requerido
+        public string roofType { get; set; }              // opcional
+        public Pt2[] profile { get; set; }                // requerido
+        public double? slope { get; set; }                // opcional (grados)
+    }
 }

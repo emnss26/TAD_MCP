@@ -73,6 +73,10 @@ namespace mcp_app
                 ["ceiling.create"] = ArchitectureActions.CeilingCreate, 
                 ["door.place"] = ArchitectureActions.DoorPlace,
                 ["window.place"] = ArchitectureActions.WindowPlace,
+                ["rooms.create_on_levels"] = ArchitectureActions.RoomsCreateOnLevels,
+                ["floors.from_rooms"] = ArchitectureActions.FloorsFromRooms,
+                ["ceilings.from_rooms"] = ArchitectureActions.CeilingsFromRooms,
+                ["roof.create_footprint"] = ArchitectureActions.RoofFootprintCreate,
 
                 // --- Estructura ---
                 ["struct.beam.create"] = StructureActions.BeamCreate,
@@ -98,14 +102,20 @@ namespace mcp_app
                 ["view.set_discipline"] = GraphicsActions.SetDiscipline,
                 ["view.set_phase"] = GraphicsActions.SetPhase,
                 ["views.duplicate"] = GraphicsActions.ViewsDuplicate,
-                ["sheets.create"] = GraphicsActions.SheetsCreate,
-                ["sheets.add_views"] = GraphicsActions.SheetsAddViews,
+                
                 ["imports.hide"] = GraphicsActions.HideImports,
 
                 // --- PARAMS ---
                 ["params.get"] = ParamsActions.ParamsGet,
                 ["params.set"] = ParamsActions.ParamsSet,
                 ["params.bulk_from_table"] = ParamsActions.ParamsBulkFromTable,
+
+                // --- DOCUMENTS ---
+                ["sheets.create"] = DocActions.SheetsCreate,
+                ["sheets.add_views"] = DocActions.SheetsAddViews,
+                ["sheets.create_bulk"] = DocActions.SheetsCreateBulk,      
+                ["sheets.assign_revisions"] = DocActions.SheetsAssignRevisions,
+                ["views.set_scope_box"] = DocActions.ViewsSetScopeBox,
 
                 // --- QUERY ---
                 ["levels.list"] = QueryActions.LevelsList,

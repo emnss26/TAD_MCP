@@ -145,6 +145,13 @@ namespace mcp_app
                 ["qa.fix.remove_textnotes"] = QaActions.FixRemoveTextNotes,
                 ["qa.fix.delete_unused_types"] = QaActions.FixDeleteUnusedTypes,
                 ["qa.fix.rename_views"] = QaActions.FixRenameViews,
+
+                // --- QTO ---
+                ["qto.walls"] = QtoActions.QtoWalls,
+                ["qto.floors"] = QtoActions.QtoFloors,
+                ["qto.struct.concrete"] = QtoActions.QtoStructConcrete,
+                ["qto.mep.pipes"] = QtoActions.QtoMepPipes,
+                ["qto.mep.ducts"] = QtoActions.QtoMepDucts
             };
         }
 

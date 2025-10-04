@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 // z no es estrictamente necesario aquí, pero lo dejamos por consistencia con otros paquetes
 import { z } from "zod";
 import { postRevit } from "./bridge.js";
+import { snapshotContext } from "../../mcp_common/src/context.js";
 
 // Servidor MCP
 const server = new McpServer({
@@ -254,6 +255,19 @@ server.registerTool(
   },
   async (args: z.infer<typeof ElementInfoSchema>) =>
     asText(await postRevit("element.info", args))
+);
+
+server.registerTool(
+  "query_context_snapshot",
+  {
+    title: "Revit Context Snapshot",
+    description: "Devuelve vista activa, niveles, grids, tipos clave, worksets, selección, etc.",
+    inputSchema: { type: "object", properties: { cacheSec: { type: "number" } } }
+  },
+  async (args: any) => {
+    const snap = await snapshotContext(postRevit, { cacheSec: args?.cacheSec ?? 30 });
+    return { content: [{ type: "text", text: JSON.stringify(snap, null, 2) }] };
+  }
 );
 
 // stdio

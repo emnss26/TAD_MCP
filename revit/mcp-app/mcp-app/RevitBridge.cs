@@ -82,7 +82,8 @@ namespace mcp_app
                 ["struct.beam.create"] = StructureActions.BeamCreate,
                 ["struct.column.create"] = StructureActions.ColumnCreate,
                 ["struct.floor.create"] = StructureActions.StructuralFloorCreate,
-                
+                ["struct.columns.place_on_grid"] = StructureActions.ColumnsPlaceOnGrid,
+
                 // --- MEP ---
                 ["mep.duct.create"] = MepDuctActions.DuctCreate,
                 ["mep.pipe.create"] = MepPipeConduitActions.PipeCreate,

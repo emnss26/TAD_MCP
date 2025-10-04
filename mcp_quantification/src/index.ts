@@ -12,6 +12,14 @@ const asInputShape = <T extends Record<string, unknown>>(shape: T) => shape as u
 const WallsShape = {
   groupBy: z.array(z.enum(["type", "level", "phase"])).optional(),
   includeIds: z.boolean().optional(),
+  filter: z.object({
+    typeIds: z.array(z.number()).optional(),
+    typeNames: z.array(z.string()).optional(),
+    nameRegex: z.string().optional(),
+    levels: z.array(z.string()).optional(),
+    phase: z.string().optional(),
+    useSelection: z.boolean().optional(),
+  }).optional(),
 };
 const Walls = z.object(WallsShape);
 

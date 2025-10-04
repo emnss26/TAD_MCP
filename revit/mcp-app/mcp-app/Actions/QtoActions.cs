@@ -153,23 +153,90 @@ namespace mcp_app.Actions
         // qto.walls
         // Args: { groupBy?: ("type"|"level"|"phase")[], includeIds?: boolean }
         // =========================================================
+        
+
+        public class QtoWallsFilter
+        {
+            public int[] typeIds { get; set; } = Array.Empty<int>();
+            public string[] typeNames { get; set; } = Array.Empty<string>();
+            public string nameRegex { get; set; } // opcional: regex contra el name del tipo
+            public string[] levels { get; set; } = Array.Empty<string>();
+            public string phase { get; set; }     // nombre de fase creada
+            public bool useSelection { get; set; } = false;
+        }
+
         public class QtoWallsReq
         {
             public string[] groupBy { get; set; } = Array.Empty<string>();
             public bool includeIds { get; set; } = false;
+            public QtoWallsFilter filter { get; set; } = null; // <--- NUEVO
         }
 
         public static Func<UIApplication, object> QtoWalls(JObject args)
         {
             var req = args.ToObject<QtoWallsReq>() ?? new QtoWallsReq();
+
+            // --- Leer filtros (opcionales) desde args.filter ---
+            var fTok = args["filter"] as JObject;
+
+            var typeIds = fTok?["typeIds"]?.Values<int>()?.ToArray() ?? Array.Empty<int>();
+            var typeNames = fTok?["typeNames"]?.Values<string>()?.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray() ?? Array.Empty<string>();
+            var nameRegex = fTok?["nameRegex"]?.Value<string>();
+            var levels = fTok?["levels"]?.Values<string>()?.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray() ?? Array.Empty<string>();
+            var phaseFilter = fTok?["phase"]?.Value<string>();
+            var useSelection = fTok?["useSelection"]?.Value<bool?>() ?? false;
+
+            // Prepara conjuntos para búsquedas O(1)
+            var typeNameSet = typeNames.Length > 0 ? new HashSet<string>(typeNames, StringComparer.OrdinalIgnoreCase) : null;
+            var levelSet = levels.Length > 0 ? new HashSet<string>(levels, StringComparer.OrdinalIgnoreCase) : null;
+            System.Text.RegularExpressions.Regex rx = null;
+            if (!string.IsNullOrWhiteSpace(nameRegex))
+            {
+                try { rx = new System.Text.RegularExpressions.Regex(nameRegex, System.Text.RegularExpressions.RegexOptions.IgnoreCase); } catch { rx = null; }
+            }
+
             return (UIApplication app) =>
             {
-                var doc = app.ActiveUIDocument?.Document ?? throw new Exception("No active document.");
+                var uidoc = app.ActiveUIDocument ?? throw new Exception("No active document.");
+                var doc = uidoc.Document ?? throw new Exception("No active document.");
 
-                var walls = new FilteredElementCollector(doc)
+                IEnumerable<Wall> wallsEnum = new FilteredElementCollector(doc)
                     .OfClass(typeof(Wall)).Cast<Wall>()
-                    .Where(w => w.Category != null && w.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Walls)
-                    .ToList();
+                    .Where(w => w.Category != null && w.Category.Id.IntegerValue == (int)BuiltInCategory.OST_Walls);
+
+                // Filtro: usar selección activa
+                if (useSelection)
+                {
+                    var selIds = uidoc.Selection?.GetElementIds() ?? new List<ElementId>();
+                    var selSet = new HashSet<int>(selIds.Select(id => id.IntegerValue));
+                    wallsEnum = wallsEnum.Where(w => selSet.Contains(w.Id.IntegerValue));
+                }
+
+                // Materializamos para aplicar el resto de filtros
+                var walls = wallsEnum.ToList();
+
+                // Filtros por tipo / nombre de tipo / regex / nivel / fase
+                if (typeIds.Length > 0 || (typeNameSet?.Count ?? 0) > 0 || rx != null || (levelSet?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(phaseFilter))
+                {
+                    walls = walls.Where(w =>
+                    {
+                        var typeId = w.GetTypeId();
+                        int tid = (typeId != null && typeId != ElementId.InvalidElementId) ? typeId.IntegerValue : -1;
+                        var tname = GetTypeName(w, doc) ?? "";
+                        var lvl = GetLevelName(w, doc) ?? "";
+                        var ph = GetCreatedPhaseName(w, doc) ?? "";
+
+                        bool pass = true;
+
+                        if (typeIds.Length > 0) pass &= typeIds.Contains(tid);
+                        if ((typeNameSet?.Count ?? 0) > 0) pass &= typeNameSet.Contains(tname);
+                        if (rx != null) pass &= rx.IsMatch(tname);
+                        if ((levelSet?.Count ?? 0) > 0) pass &= levelSet.Contains(lvl);
+                        if (!string.IsNullOrWhiteSpace(phaseFilter)) pass &= string.Equals(phaseFilter, ph, StringComparison.OrdinalIgnoreCase);
+
+                        return pass;
+                    }).ToList();
+                }
 
                 double totalLenM = 0, totalAreaM2 = 0, totalVolM3 = 0;
                 var groups = new Dictionary<string, (double len, double area, double vol, int count, object keyObj)>();

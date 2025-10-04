@@ -67,6 +67,34 @@ server.registerTool("struct_floor_create", {
     const result = await postRevit("struct.floor.create", args);
     return asText(result);
 });
+/* ============================
+   struct.columns.place_on_grid
+   ============================ */
+const ColumnsPlaceOnGridShape = {
+    baseLevel: z.string(), // requerido
+    topLevel: z.string().optional(), // opcional (usa baseLevel si falta)
+    familyType: z.string(), // requerido ("Family: Type" o solo Type)
+    gridX: z.array(z.string()).optional(), // p.ej. ["A-E"] o ["A","B","C"]
+    gridY: z.array(z.string()).optional(), // p.ej. ["1-8"] o ["1","2","3"]
+    gridNames: z.array(z.string()).optional(), // alternativa: lista plana (el server separa X/Y por dirección)
+    baseOffset_m: z.number().optional(), // default 0
+    topOffset_m: z.number().optional(), // default 0
+    onlyIntersectionsInsideActiveCrop: z.boolean().optional(), // filtra por crop de vista activa
+    tolerance_m: z.number().optional(), // default 0.05
+    skipIfColumnExistsNearby: z.boolean().optional(),
+    worksetName: z.string().optional(),
+    pinned: z.boolean().optional(),
+    orientationRelativeTo: z.enum(["X", "Y", "None"]).optional(), // rotación respecto a Z
+};
+const ColumnsPlaceOnGridSchema = z.object(ColumnsPlaceOnGridShape);
+server.registerTool("struct_columns_place_on_grid", {
+    title: "Place Columns on Grid",
+    description: "Coloca columnas estructurales en intersecciones de ejes (rangos A-E / 1-8 o gridNames).",
+    inputSchema: ColumnsPlaceOnGridShape,
+}, async (args) => {
+    const result = await postRevit("struct.columns.place_on_grid", args);
+    return asText(result);
+});
 // stdio
 const transport = new StdioServerTransport();
 await server.connect(transport);

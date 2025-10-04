@@ -24,8 +24,8 @@
     "typescript": "^5.9.3"
   },
   "exports": {
-    "./context": "./dist/context.js",
-    "./plan": "./dist/plan.js",
-    "./tmpl": "./dist/tmpl.js"
+    "./context": { "types": "./dist/context.d.ts", "default": "./dist/context.js" },
+    "./plan":    { "types": "./dist/plan.d.ts",    "default": "./dist/plan.js" },
+    "./tmpl":    { "types": "./dist/tmpl.d.ts",    "default": "./dist/tmpl.js" }
   }
 }

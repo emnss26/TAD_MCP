@@ -4,263 +4,256 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { postRevit } from "./bridge.js";
 
-// Server MCP
+// Crea el servidor MCP
 const server = new McpServer({
-  name: "mcp-graphics",
+  name: "mcp-arch",
   version: "1.0.0",
 });
 
-// Helper: respuesta como texto (JSON pretty)
+// Helper: empaqueta cualquier objeto como texto (JSON pretty)
 const asText = (obj: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(obj, null, 2) }],
 });
 
-/* =========================================
-   view.category.set_visibility
-========================================= */
-const SetVisibilityShape = {
-  categories: z.array(z.string()).min(1),
-  visible: z.boolean().optional(),
-  forceDetachTemplate: z.boolean().optional(),
-  viewId: z.number().int().optional(),
+// ===== Shapes / Schemas reutilizables =====
+const Pt2Shape = { x: z.number(), y: z.number() };
+const Pt2Schema = z.object(Pt2Shape);
+
+// ===== wall.create =====
+const WallCreateShape = {
+  level: z.string().optional(),
+  wallType: z.string().optional(),
+  start: z.object(Pt2Shape),
+  end: z.object(Pt2Shape),
+  height_m: z.number().optional(),
+  structural: z.boolean().optional(),
 };
-const SetVisibilitySchema = z.object(SetVisibilityShape);
+const WallCreateSchema = z.object(WallCreateShape);
 
 server.registerTool(
-  "graphics_set_visibility",
+  "arch_wall_create",
   {
-    title: "Set Category Visibility",
+    title: "Create Wall",
+    description: "Crea un muro recto con tipo/nivel opcional",
+    inputSchema: WallCreateShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof WallCreateSchema>) => {
+    const result = await postRevit("wall.create", args);
+    return asText(result);
+  }
+);
+
+// ===== level.create =====
+const LevelCreateShape = {
+  elevation_m: z.number(),
+  name: z.string().optional(),
+};
+const LevelCreateSchema = z.object(LevelCreateShape);
+
+server.registerTool(
+  "arch_level_create",
+  {
+    title: "Create Level",
+    description: "Crea un nivel a cierta elevación (m)",
+    inputSchema: LevelCreateShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof LevelCreateSchema>) => {
+    const result = await postRevit("level.create", args);
+    return asText(result);
+  }
+);
+
+// ===== grid.create =====
+const GridCreateShape = {
+  start: z.object(Pt2Shape),
+  end: z.object(Pt2Shape),
+  name: z.string().optional(),
+};
+const GridCreateSchema = z.object(GridCreateShape);
+
+server.registerTool(
+  "arch_grid_create",
+  {
+    title: "Create Grid",
+    description: "Crea una retícula",
+    inputSchema: GridCreateShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof GridCreateSchema>) => {
+    const result = await postRevit("grid.create", args);
+    return asText(result);
+  }
+);
+
+// ===== floor.create =====
+const FloorCreateShape = {
+  level: z.string().optional(),
+  floorType: z.string().optional(),
+  profile: z.array(z.object(Pt2Shape)).min(3),
+};
+const FloorCreateSchema = z.object(FloorCreateShape);
+
+server.registerTool(
+  "arch_floor_create",
+  {
+    title: "Create Floor",
+    description: "Crea un piso por contorno en un nivel",
+    inputSchema: FloorCreateShape, // <- SHAPE
+  },
+  async (args: z.infer<typeof FloorCreateSchema>) => {
+    const result = await postRevit("floor.create", args);
+    return asText(result);
+  }
+);
+
+// ===== ceiling.create (NotImplemented en bridge) =====
+server.registerTool(
+  "arch_ceiling_create",
+  {
+    title: "Create Ceiling (sketch)",
     description:
-      "Muestra/oculta categorías en la vista actual o una dada. Usa forceDetachTemplate para desvincular plantilla.",
-    inputSchema: SetVisibilityShape,
+      "Intento de crear techo por sketch (no implementado en el bridge)",
+    inputSchema: {}, // <- SHAPE vacío
   },
-  async (args: z.infer<typeof SetVisibilitySchema>) => {
-    const result = await postRevit("view.category.set_visibility", args);
+  async () => {
+    const result = await postRevit("ceiling.create", {}); // propagará el error del bridge
     return asText(result);
   }
 );
 
-/* =========================================
-   view.category.clear_overrides
-========================================= */
-const ClearOverridesShape = {
-  categories: z.array(z.string()).min(1),
-  forceDetachTemplate: z.boolean().optional(),
-  viewId: z.number().int().optional(),
+// ===== door.place =====
+const DoorPlaceShape = {
+  hostWallId: z.number().int().optional(),
+  level: z.string().optional(),
+  familySymbol: z.string().optional(),
+  point: z.object(Pt2Shape).optional(),
+  offset_m: z.number().optional(),
+  offsetAlong_m: z.number().optional(),
+  alongNormalized: z.number().min(0).max(1).optional(),
+  flipHand: z.boolean().optional(),
+  flipFacing: z.boolean().optional(),
 };
-const ClearOverridesSchema = z.object(ClearOverridesShape);
+const DoorPlaceSchema = z.object(DoorPlaceShape);
 
 server.registerTool(
-  "graphics_clear_overrides",
+  "arch_door_place",
   {
-    title: "Clear Category Overrides",
+    title: "Place Door",
     description:
-      "Elimina overrides gráficos de las categorías en la vista objetivo.",
-    inputSchema: ClearOverridesShape,
+      "Coloca una puerta. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
+    inputSchema: DoorPlaceShape, // <- SHAPE
   },
-  async (args: z.infer<typeof ClearOverridesSchema>) => {
-    const result = await postRevit("view.category.clear_overrides", args);
+  async (args: z.infer<typeof DoorPlaceSchema>) => {
+    const result = await postRevit("door.place", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   view.category.override_color
-========================================= */
-const Rgb = z.object({
-  r: z.number().int().min(0).max(255),
-  g: z.number().int().min(0).max(255),
-  b: z.number().int().min(0).max(255),
-});
-const Hex = z.string().regex(/^#?[0-9A-Fa-f]{6}$/, "Use #RRGGBB");
-
-const OverrideColorShape = {
-  categories: z.array(z.string()).min(1),
-  color: z.union([Hex, Rgb]),
-  transparency: z.number().int().min(0).max(100).optional(),
-  halftone: z.boolean().optional(),
-  surfaceSolid: z.boolean().optional(),
-  projectionLines: z.boolean().optional(),
-  forceDetachTemplate: z.boolean().optional(),
-  viewId: z.number().int().optional(),
-};
-const OverrideColorSchema = z.object(OverrideColorShape);
+// ===== window.place (mismo shape que puerta) =====
+const WindowPlaceShape = DoorPlaceShape;
+const WindowPlaceSchema = DoorPlaceSchema;
 
 server.registerTool(
-  "graphics_override_color",
+  "arch_window_place",
   {
-    title: "Override Category Color",
+    title: "Place Window",
     description:
-      "Aplica color/trasparencia/halftone a categorías; soporta color #RRGGBB o {r,g,b}.",
-    inputSchema: OverrideColorShape,
+      "Coloca una ventana. hostWallId/point pueden omitirse; el bridge resuelve por selección o muro cercano. Soporta offsetAlong_m / alongNormalized.",
+    inputSchema: WindowPlaceShape, // <- SHAPE
   },
-  async (args: z.infer<typeof OverrideColorSchema>) => {
-    const result = await postRevit("view.category.override_color", args);
+  async (args: z.infer<typeof WindowPlaceSchema>) => {
+    const result = await postRevit("window.place", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   view.apply_template
-========================================= */
-const ApplyTemplateShape = {
-  viewId: z.number().int().optional(),
-  templateId: z.number().int().optional(),
-  templateName: z.string().optional(),
+// ===== rooms.create_on_levels =====
+const RoomsCreateOnLevelsShape = {
+  levelNames: z.array(z.string()).optional(),
+  placeOnlyEnclosed: z.boolean().optional(),
 };
-const ApplyTemplateSchema = z.object(ApplyTemplateShape);
+const RoomsCreateOnLevelsSchema = z.object(RoomsCreateOnLevelsShape);
 
 server.registerTool(
-  "view_apply_template",
+  "arch_rooms_create_on_levels",
   {
-    title: "Apply View Template",
+    title: "Create Rooms on Levels",
     description:
-      "Aplica una View Template por id o nombre a la vista actual o una dada.",
-    inputSchema: ApplyTemplateShape,
+      "Crea habitaciones automáticamente en los niveles indicados (o en todos si no se especifican).",
+    inputSchema: RoomsCreateOnLevelsShape, // <- SHAPE
   },
-  async (args: z.infer<typeof ApplyTemplateSchema>) => {
-    const result = await postRevit("view.apply_template", args);
+  async (args: z.infer<typeof RoomsCreateOnLevelsSchema>) => {
+    const result = await postRevit("rooms.create_on_levels", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   view.set_scale
-========================================= */
-const SetScaleShape = {
-  viewId: z.number().int().optional(),
-  scale: z.number().int().min(1),
+// ===== floors.from_rooms =====
+const FloorsFromRoomsShape = {
+  roomIds: z.array(z.number().int()).min(1),
+  floorType: z.string().optional(),
+  baseOffset_m: z.number().optional(),
 };
-const SetScaleSchema = z.object(SetScaleShape);
+const FloorsFromRoomsSchema = z.object(FloorsFromRoomsShape);
 
 server.registerTool(
-  "view_set_scale",
+  "arch_floors_from_rooms",
   {
-    title: "Set View Scale",
-    description: "Cambia la escala de la vista.",
-    inputSchema: SetScaleShape,
-  },
-  async (args: z.infer<typeof SetScaleSchema>) => {
-    const result = await postRevit("view.set_scale", args);
-    return asText(result);
-  }
-);
-
-/* =========================================
-   view.set_detail_level
-========================================= */
-const SetDetailLevelShape = {
-  viewId: z.number().int().optional(),
-  detailLevel: z.enum(["coarse", "medium", "fine"]).optional(),
-};
-const SetDetailLevelSchema = z.object(SetDetailLevelShape);
-
-server.registerTool(
-  "view_set_detail_level",
-  {
-    title: "Set Detail Level",
-    description: "Ajusta el nivel de detalle: coarse | medium | fine.",
-    inputSchema: SetDetailLevelShape,
-  },
-  async (args: z.infer<typeof SetDetailLevelSchema>) => {
-    const result = await postRevit("view.set_detail_level", args);
-    return asText(result);
-  }
-);
-
-/* =========================================
-   view.set_discipline
-========================================= */
-const SetDisciplineShape = {
-  viewId: z.number().int().optional(),
-  discipline: z
-    .enum(["architectural", "structural", "mechanical", "coordination"])
-    .optional(),
-};
-const SetDisciplineSchema = z.object(SetDisciplineShape);
-
-server.registerTool(
-  "view_set_discipline",
-  {
-    title: "Set View Discipline",
+    title: "Create Floors from Rooms",
     description:
-      "Cambia la disciplina de la vista: architectural | structural | mechanical | coordination.",
-    inputSchema: SetDisciplineShape,
+      "Crea pisos siguiendo el borde de las habitaciones. Acepta floorType y baseOffset_m.",
+    inputSchema: FloorsFromRoomsShape, // <- SHAPE
   },
-  async (args: z.infer<typeof SetDisciplineSchema>) => {
-    const result = await postRevit("view.set_discipline", args);
+  async (args: z.infer<typeof FloorsFromRoomsSchema>) => {
+    const result = await postRevit("floors.from_rooms", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   view.set_phase
-========================================= */
-const SetPhaseShape = {
-  viewId: z.number().int().optional(),
-  phase: z.string().optional(),
+// ===== roof.create_footprint =====
+const RoofCreateFootprintShape = {
+  level: z.string(), // requerido por el bridge
+  roofType: z.string().optional(),
+  profile: z.array(z.object(Pt2Shape)).min(3),
+  slope: z.number().optional(), // grados
 };
-const SetPhaseSchema = z.object(SetPhaseShape);
+const RoofCreateFootprintSchema = z.object(RoofCreateFootprintShape);
 
 server.registerTool(
-  "view_set_phase",
+  "arch_roof_create_footprint",
   {
-    title: "Set View Phase",
+    title: "Create Roof (Footprint)",
     description:
-      "Define la fase de la vista (por nombre). Si no se especifica, el bridge usa la última fase.",
-    inputSchema: SetPhaseShape,
+      "Crea una cubierta por huella en un nivel, con perfil cerrado y pendiente opcional (grados).",
+    inputSchema: RoofCreateFootprintShape, // <- SHAPE
   },
-  async (args: z.infer<typeof SetPhaseSchema>) => {
-    const result = await postRevit("view.set_phase", args);
+  async (args: z.infer<typeof RoofCreateFootprintSchema>) => {
+    const result = await postRevit("roof.create_footprint", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   views.duplicate
-========================================= */
-const ViewsDuplicateShape = {
-  viewIds: z.array(z.number().int()).default([]),
-  mode: z.enum(["duplicate", "with_detailing", "as_dependent"]).optional(),
+// ===== ceilings.from_rooms (opcional; NotImplemented en bridge) =====
+const CeilingsFromRoomsShape = {
+  roomIds: z.array(z.number().int()).min(1),
+  ceilingType: z.string().optional(),
+  height_m: z.number().optional(),
 };
-const ViewsDuplicateSchema = z.object(ViewsDuplicateShape);
+const CeilingsFromRoomsSchema = z.object(CeilingsFromRoomsShape);
 
 server.registerTool(
-  "views_duplicate",
+  "arch_ceilings_from_rooms",
   {
-    title: "Duplicate Views",
+    title: "Create Ceilings from Rooms",
     description:
-      "Duplica vistas por ids. mode: duplicate | with_detailing | as_dependent.",
-    inputSchema: ViewsDuplicateShape,
+      "Crea techos a partir de habitaciones (no implementado aún en el bridge; devolverá error).",
+    inputSchema: CeilingsFromRoomsShape, // <- SHAPE
   },
-  async (args: z.infer<typeof ViewsDuplicateSchema>) => {
-    const result = await postRevit("views.duplicate", args);
+  async (args: z.infer<typeof CeilingsFromRoomsSchema>) => {
+    const result = await postRevit("ceilings.from_rooms", args);
     return asText(result);
   }
 );
 
-/* =========================================
-   imports.hide
-========================================= */
-const HideImportsShape = {
-  viewId: z.number().int().optional(),
-};
-const HideImportsSchema = z.object(HideImportsShape);
-
-server.registerTool(
-  "imports_hide",
-  {
-    title: "Hide CAD Imports (View)",
-    description:
-      "Oculta importaciones CAD en la vista actual o la vista indicada.",
-    inputSchema: HideImportsShape,
-  },
-  async (args: z.infer<typeof HideImportsSchema>) => {
-    const result = await postRevit("imports.hide", args);
-    return asText(result);
-  }
-);
-
-// stdio
+// Arrancar stdio
 const transport = new StdioServerTransport();
 await server.connect(transport);

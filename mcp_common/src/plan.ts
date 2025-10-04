@@ -1,70 +1,39 @@
-import { applyTemplate } from "./tmpl.js";
-import type { PostFn } from "./context.js";
+import { z } from "zod";
 
-export type PlanStep = {
-  action?: string;
-  args?: any;
-  foreach?: string;           // nombre de arreglo en scope (ej. "spans")
-  argsTemplate?: any;         // objeto con placeholders {$item...} {$vars...}
-  require?: Array<{ action: string; args?: any; expect?: (res: any) => boolean }>;
-  waitMs?: number;
-  setVar?: { name: string; from: "lastResult" | string }; // sencillo
-};
+export const PlanInput = z.object({
+  intent: z.enum([
+    "create_wall","place_door","place_window",
+    "create_floor","create_roof","create_beam",
+    "create_column","create_pipe","create_duct"
+  ]),
+  args: z.record(z.any()).optional(),
+});
 
-export type Plan = {
-  vars?: Record<string, any>;
-  steps: PlanStep[];
-  dryRun?: boolean;
-  continueOnError?: boolean;
-};
+export type PlanStep = { tool: string; args: any; why: string };
+export function orchestratePlan(input: z.infer<typeof PlanInput>): PlanStep[] {
+  const { intent, args } = PlanInput.parse(input);
+  const steps: PlanStep[] = [];
 
-export async function runPlan(post: PostFn, plan: Plan) {
-  const report: any[] = [];
-  const scope = { vars: plan.vars ?? {}, lastResult: null };
+  // 0) enriquecer contexto antes (si tiene sentido)
+  steps.push({ tool: "query_context_snapshot", args: { cacheSec: 30 }, why: "Contexto para validar recursos" });
 
-  for (const step of plan.steps) {
-    try {
-      // 1) requires
-      if (step.require?.length) {
-        for (const r of step.require) {
-          const rArgs = applyTemplate(r.args ?? {}, scope);
-          const rr = await post(r.action, rArgs);
-          const ok = r.expect ? !!r.expect(rr) : true;
-          if (!ok) throw new Error(`require failed for ${r.action}`);
-        }
-      }
+  // 1) dispatch por intent
+  const map: Record<string,string> = {
+    create_wall:   "arch_wall_create",
+    place_door:    "arch_door_place",
+    place_window:  "arch_window_place",
+    create_floor:  "arch_floor_create",
+    create_roof:   "arch_roof_create",
+    create_beam:   "str_beam_create",
+    create_column: "str_column_create",
+    create_pipe:   "mep_pipe_create",
+    create_duct:   "mep_duct_create",
+  };
+  const tool = map[intent];
+  if (tool) steps.push({ tool, args: args ?? {}, why: "Ejecuta la acción principal" });
 
-      // 2) wait
-      if (step.waitMs && step.waitMs > 0) await new Promise(res => setTimeout(res, step.waitMs));
+  // 2) opcional: verificación/QA rápida
+  // steps.push({ tool: "qa_fix_pin_all_links", args: {}, why: "Ejemplo de post-step" });
 
-      // 3) foreach o simple
-      if (step.foreach) {
-        const it = scope.vars?.[step.foreach];
-        if (!Array.isArray(it)) throw new Error(`foreach expects array vars.${step.foreach}`);
-        const created: any[] = [];
-        for (const item of it) {
-          const args = applyTemplate(step.argsTemplate ?? {}, { ...scope, item });
-          const res = plan.dryRun ? { dryRun: true, wouldCall: step.action, args } : await post(step.action!, args);
-          created.push(res);
-          scope.lastResult = res;
-        }
-        report.push({ step, ok: true, results: created });
-      } else if (step.action) {
-        const args = applyTemplate(step.args ?? {}, scope);
-        const res = plan.dryRun ? { dryRun: true, wouldCall: step.action, args } : await post(step.action, args);
-        scope.lastResult = res;
-        report.push({ step, ok: true, result: res });
-      }
-
-      // 4) setVar
-      if (step.setVar) {
-        scope.vars[step.setVar.name] = (step.setVar.from === "lastResult") ? scope.lastResult : scope.vars[step.setVar.from];
-      }
-    } catch (err: any) {
-      report.push({ step, ok: false, error: String(err?.message || err) });
-      if (!plan.continueOnError) break;
-    }
-  }
-
-  return { ok: report.every(r => r.ok !== false), steps: report, vars: scope.vars };
+  return steps;
 }

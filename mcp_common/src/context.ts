@@ -1,43 +1,44 @@
-export type PostFn = (action: string, args?: any) => Promise<any>;
+import { z } from "zod";
 
-type Cache<T> = { at: number; ttl: number; value: T };
-let _cache: Cache<any> | null = null;
+export const ContextOpts = z.object({
+  cacheSec: z.number().int().min(1).max(3600).default(30),
+});
+type Ctx = z.infer<typeof ContextOpts>;
+
+let _cache: { data: any; exp: number } | null = null;
 
 export async function snapshotContext(
-  post: PostFn,
-  opts: { cacheSec?: number; includeGeometryHints?: boolean } = {}
+  postRevit: (action: string, args: any) => Promise<any>,
+  opts?: Partial<Ctx>
 ) {
-  const ttl = (opts.cacheSec ?? 30) * 1000;
+  const { cacheSec } = ContextOpts.parse(opts ?? {});
   const now = Date.now();
-  if (_cache && now - _cache.at < _cache.ttl) return _cache.value;
+  if (_cache && _cache.exp > now) return _cache.data;
 
-  // Llamadas directas al Bridge (ya las tienes implementadas):
-  const [activeView, levels, worksets, wallTypes, ductTypes, pipeTypes, families, grids, selection] =
+  const [activeView, levels, wallTypes, floorTypes, matList, famTypes, selection] =
     await Promise.all([
-      post("view.active", {}),
-      post("levels.list", {}),
-      post("worksets.list", {}).catch(() => ({ items: [] })), // si no hay worksharing
-      post("walltypes.list", {}).catch(() => ({ items: [] })),
-      post("ducttypes.list", {}).catch(() => ({ items: [] })),
-      post("pipetypes.list", {}).catch(() => ({ items: [] })),
-      post("families.types.list", {}).catch(() => ({ items: [] })),
-      post("grids.list", {}).catch(() => ({ items: [] })), // si aún no existe, añade en Bridge
-      post("selection.info", {}).catch(() => ({ items: [] }))
+      postRevit("view.active", {}),
+      postRevit("levels.list", {}),
+      postRevit("walltypes.list", {}),
+      postRevit("floortypes.list", {}).catch(() => ({ items: [] })), // si no existe, devuelve vacío
+      postRevit("materials.list", {}),
+      postRevit("families.types.list", {}),
+      postRevit("selection.info", { includeParameters: false }).catch(() => ({ items: [] })),
     ]);
 
-  const snapshot = {
-    activeView,
-    levels,
-    worksets,
-    wallTypes,
-    ductTypes,
-    pipeTypes,
-    families,
-    grids,
+  const data = {
+    activeView, levels,
+    catalogs: {
+      walls: wallTypes,
+      floors: floorTypes,
+      materials: matList,
+      families: famTypes,
+    },
     selection,
-    units: { internal: "ft", display: "metric" }
+    ts: new Date().toISOString(),
+    ttlSec: cacheSec,
   };
 
-  _cache = { at: now, ttl, value: snapshot };
-  return snapshot;
+  _cache = { data, exp: now + cacheSec * 1000 };
+  return data;
 }

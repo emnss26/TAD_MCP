@@ -22,5 +22,10 @@
     "@types/node": "^24.6.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
+  },
+  "exports": {
+    "./context": "./dist/context.js",
+    "./plan": "./dist/plan.js",
+    "./tmpl": "./dist/tmpl.js"
   }
 }
